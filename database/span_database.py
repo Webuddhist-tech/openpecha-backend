@@ -78,6 +78,62 @@ def _adjust_continuous_for_replace(
     return (start, end)
 
 
+def _map_replace_boundary(position: int, replace_start: int, replace_end: int, new_len: int) -> int:
+    """Map one line boundary through a replacement."""
+    if position <= replace_start:
+        return position
+    if position >= replace_end:
+        return position + new_len - (replace_end - replace_start)
+    return replace_start + new_len
+
+
+def _adjust_continuous_lines_for_replace(
+    lines: list[tuple[str, int, int]],
+    replace_start: int,
+    replace_end: int,
+    new_len: int,
+    *,
+    is_first_encompassed: bool,
+) -> list[tuple[str, int, int]] | None:
+    """Adjust the outer entity once, then map all of its line boundaries consistently."""
+    nonempty_indexes = [index for index, (_, start, end) in enumerate(lines) if start < end]
+    if not nonempty_indexes:
+        return [
+            (
+                span_id,
+                mapped := _map_replace_boundary(start, replace_start, replace_end, new_len),
+                mapped,
+            )
+            for span_id, start, _ in lines
+        ]
+
+    outer = _adjust_continuous_for_replace(
+        lines[0][1],
+        lines[-1][2],
+        replace_start,
+        replace_end,
+        new_len,
+        is_first_encompassed=is_first_encompassed,
+    )
+    if outer is None:
+        return None
+
+    outer_start, outer_end = outer
+    adjusted_lines: list[tuple[str, int, int]] = []
+    first_nonempty, last_nonempty = nonempty_indexes[0], nonempty_indexes[-1]
+    for index, (span_id, start, end) in enumerate(lines):
+        new_start = min(max(_map_replace_boundary(start, replace_start, replace_end, new_len), outer_start), outer_end)
+        new_end = min(max(_map_replace_boundary(end, replace_start, replace_end, new_len), outer_start), outer_end)
+        if index == first_nonempty:
+            new_start = outer_start
+        if index == last_nonempty:
+            new_end = outer_end
+        if new_start != new_end or start == end:
+            adjusted_lines.append((span_id, new_start, new_end))
+
+    return sorted(adjusted_lines, key=lambda line: (line[1], line[2], line[0]))
+
+
 def _adjust_annotation_for_replace(
     start: int,
     end: int,
@@ -106,20 +162,22 @@ class SpanDatabase:
     FIND_CONTINUOUS_SPANS_QUERY: LiteralString = """
     CALL {
         MATCH (m:Edition {id: $edition_id})
-            -[:HAS_SEGMENTATION]->()
+            -[:HAS_SEGMENTATION]->(collection:Segmentation)
             <-[:SEGMENT_OF]-(entity:Segment)
             <-[:SPAN_OF]-(span:Span)
-        RETURN elementId(span) AS span_id, span.start AS span_start, span.end AS span_end
+        RETURN collection.id AS collection_id, entity.id AS entity_id,
+               elementId(span) AS span_id, span.start AS span_start, span.end AS span_end
         UNION ALL
         MATCH (m:Edition {id: $edition_id})
-            <-[:PAGINATION_OF]-(:Pagination)
+            <-[:PAGINATION_OF]-(collection:Pagination)
             <-[:VOLUME_OF]-(:Volume)
             <-[:PAGE_OF]-(entity:Page)
             <-[:SPAN_OF]-(span:Span)
-        RETURN elementId(span) AS span_id, span.start AS span_start, span.end AS span_end
+        RETURN collection.id AS collection_id, entity.id AS entity_id,
+               elementId(span) AS span_id, span.start AS span_start, span.end AS span_end
     }
-    RETURN span_id, span_start, span_end
-    ORDER BY span_start, span_id, span_end
+    RETURN collection_id, entity_id, span_id, span_start, span_end
+    ORDER BY collection_id, span_start, entity_id, span_end, span_id
     """
 
     FIND_ANNOTATION_SPANS_QUERY: LiteralString = """
@@ -250,24 +308,39 @@ class SpanDatabase:
             await DatabaseValidator.validate_edition_spans(tx, edition_id, end)
             updates: list[dict[str, str | int]] = []
             deletes: list[str] = []
-            first_encompassed_found = False
 
             result = await tx.run(self.FIND_CONTINUOUS_SPANS_QUERY, edition_id=edition_id)
+            entities: dict[tuple[str, str], list[tuple[str, int, int]]] = {}
             for record in await result.data():
-                span_start = record["span_start"]
-                span_end = record["span_end"]
-                is_encompassed = start <= span_start and end >= span_end
-                is_first = is_encompassed and not first_encompassed_found
-                if is_first:
-                    first_encompassed_found = True
+                key = (record["collection_id"], record["entity_id"])
+                entities.setdefault(key, []).append((record["span_id"], record["span_start"], record["span_end"]))
 
-                adjusted = _adjust_continuous_for_replace(
-                    span_start, span_end, start, end, new_len, is_first_encompassed=is_first
+            encompassed_collections: set[str] = set()
+            ordered_entities = sorted(
+                entities.items(),
+                key=lambda item: (item[0][0], item[1][0][1], item[1][-1][2], item[0][1]),
+            )
+            for (collection_id, _), lines in ordered_entities:
+                is_encompassed = any(line_start < line_end for _, line_start, line_end in lines)
+                is_encompassed = is_encompassed and start <= lines[0][1] and end >= lines[-1][2]
+                is_first = is_encompassed and collection_id not in encompassed_collections
+                if is_encompassed:
+                    encompassed_collections.add(collection_id)
+
+                adjusted_lines = _adjust_continuous_lines_for_replace(
+                    lines, start, end, new_len, is_first_encompassed=is_first
                 )
-                if adjusted is None:
-                    deletes.append(record["span_id"])
-                elif adjusted != (span_start, span_end):
-                    updates.append({"span_id": record["span_id"], "new_start": adjusted[0], "new_end": adjusted[1]})
+                if adjusted_lines is None:
+                    deletes.extend(span_id for span_id, _, _ in lines)
+                    continue
+
+                adjusted_by_id = {span_id: (new_start, new_end) for span_id, new_start, new_end in adjusted_lines}
+                for span_id, old_start, old_end in lines:
+                    adjusted = adjusted_by_id.get(span_id)
+                    if adjusted is None:
+                        deletes.append(span_id)
+                    elif adjusted != (old_start, old_end):
+                        updates.append({"span_id": span_id, "new_start": adjusted[0], "new_end": adjusted[1]})
 
             result = await tx.run(self.FIND_ANNOTATION_SPANS_QUERY, edition_id=edition_id)
             for record in await result.data():

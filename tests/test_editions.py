@@ -1153,6 +1153,133 @@ class TestPatchContent(TestEditionsEndpoints):
             [{"start": 5, "end": 15}],
         ]
 
+    @pytest.mark.parametrize("annotation_kind", ["segmentation", "pagination"])
+    @pytest.mark.parametrize(
+        ("start", "end", "text", "expected_lines"),
+        [
+            pytest.param(1, 10, "XX", [[(0, 3)], [(3, 13)]], id="encompassed-line"),
+            pytest.param(4, 10, "ZZZ", [[(0, 7)], [(7, 17)]], id="partially-overlapped-line"),
+            pytest.param(5, 6, "Z", [[(0, 5), (5, 10)], [(10, 20)]], id="boundary-same-length"),
+            pytest.param(5, 7, "Z", [[(0, 5), (5, 9)], [(9, 19)]], id="boundary-shrink"),
+            pytest.param(0, 10, "XYZ", [[(0, 3)], [(3, 13)]], id="exact-entity"),
+        ],
+    )
+    async def test_patch_content_replace_preserves_multiline_contiguity(
+        self,
+        client,
+        test_database,
+        test_person_data,
+        annotation_kind,
+        start,
+        end,
+        text,
+        expected_lines,
+    ):
+        """Replacement must remap all line boundaries consistently within an entity."""
+        person_id = await self._create_test_person(test_database, test_person_data)
+        text_id = await self._create_test_text(test_database, person_id)
+        metadata = {"type": "collated", "source": "Test Source"}
+        if annotation_kind == "segmentation":
+            annotation = {
+                "segments": [
+                    {"reference": "S1", "lines": [{"start": 0, "end": 5}, {"start": 5, "end": 10}]},
+                    {"reference": "S2", "lines": [{"start": 10, "end": 20}]},
+                ]
+            }
+        else:
+            metadata |= {"type": "diplomatic", "bdrc": f"W{generate_id()[:8]}"}
+            annotation = {
+                "volumes": [{
+                    "pages": [
+                        {"reference": "P1", "lines": [{"start": 0, "end": 5}, {"start": 5, "end": 10}]},
+                        {"reference": "P2", "lines": [{"start": 10, "end": 20}]},
+                    ]
+                }]
+            }
+
+        create_response = await client.post(
+            f"/v2/texts/{text_id}/editions",
+            json={"content": "0123456789ABCDEFGHIJ", "metadata": metadata, annotation_kind: annotation},
+        )
+        assert create_response.status_code == 201
+        edition_id = create_response.json()["id"]
+        original_segment_id = None
+        if annotation_kind == "segmentation":
+            original_response = await client.get(f"/v2/editions/{edition_id}/segmentation/segments")
+            assert original_response.status_code == 200
+            original_segment_id = original_response.json()["items"][0]["id"]
+
+        patch_response = await client.patch(
+            f"/v2/editions/{edition_id}/content",
+            json={"type": "replace", "start": start, "end": end, "text": text},
+        )
+        assert patch_response.status_code == 204
+
+        if annotation_kind == "segmentation":
+            annotation_response = await client.get(f"/v2/editions/{edition_id}/segmentation/segments")
+            entities = annotation_response.json().get("items", [])
+        else:
+            annotation_response = await client.get(f"/v2/editions/{edition_id}/pagination")
+            entities = annotation_response.json().get("volumes", [{}])[0].get("pages", [])
+
+        assert annotation_response.status_code == 200, annotation_response.json()
+        assert [entity["reference"] for entity in entities] == (
+            ["S1", "S2"] if annotation_kind == "segmentation" else ["P1", "P2"]
+        )
+        if original_segment_id is not None:
+            assert entities[0]["id"] == original_segment_id
+        assert [
+            [(line["start"], line["end"]) for line in entity["lines"]]
+            for entity in entities
+        ] == expected_lines
+
+    async def test_patch_content_replace_tracks_first_encompassed_segment_by_entity(
+        self, client, test_database, test_person_data
+    ):
+        """An encompassed line must not consume the survivor slot for a later whole segment."""
+        person_id = await self._create_test_person(test_database, test_person_data)
+        text_id = await self._create_test_text(test_database, person_id)
+        create_response = await client.post(
+            f"/v2/texts/{text_id}/editions",
+            json={
+                "content": "0123456789ABCDEF",
+                "metadata": {"type": "collated", "source": "Test Source"},
+                "segmentation": {
+                    "segments": [
+                        {"reference": "S1", "lines": [{"start": 0, "end": 4}, {"start": 4, "end": 8}]},
+                        {"reference": "S2", "lines": [{"start": 8, "end": 10}]},
+                        {"reference": "S3", "lines": [{"start": 10, "end": 12}]},
+                        {"reference": "S4", "lines": [{"start": 12, "end": 16}]},
+                    ]
+                },
+            },
+        )
+        assert create_response.status_code == 201
+        edition_id = create_response.json()["id"]
+
+        original_response = await client.get(f"/v2/editions/{edition_id}/segmentation/segments")
+        assert original_response.status_code == 200
+        original_ids = {segment["reference"]: segment["id"] for segment in original_response.json()["items"]}
+
+        patch_response = await client.patch(
+            f"/v2/editions/{edition_id}/content",
+            json={"type": "replace", "start": 2, "end": 14, "text": "XX"},
+        )
+        assert patch_response.status_code == 204
+
+        segments_response = await client.get(f"/v2/editions/{edition_id}/segmentation/segments")
+        assert segments_response.status_code == 200
+        segments = segments_response.json()["items"]
+        assert [segment["reference"] for segment in segments] == ["S1", "S2", "S4"]
+        assert {segment["reference"]: segment["id"] for segment in segments} == {
+            reference: original_ids[reference] for reference in ("S1", "S2", "S4")
+        }
+        assert [segment["lines"] for segment in segments] == [
+            [{"start": 0, "end": 4}],
+            [{"start": 2, "end": 4}],
+            [{"start": 4, "end": 6}],
+        ]
+
     async def test_patch_content_replace_success(self, client, test_database, test_person_data):
         """Test successful replace operation."""
         person_id = await self._create_test_person(test_database, test_person_data)
