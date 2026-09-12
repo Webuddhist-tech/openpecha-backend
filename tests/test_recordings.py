@@ -205,6 +205,22 @@ class TestRecordingsEndpoints:
         assert response.status_code == 422
         assert "do not exist" in response.json()["error"]
 
+    async def test_create_recording_when_narrator_role_is_missing(self, client, test_database):
+        """Production may predate the recordings feature and lack RoleType {name: 'narrator'}."""
+        person_id, edition_id = await self._setup_edition(client, test_database)
+        async with test_database.get_session() as session:
+            await session.run("MATCH (rt:RoleType {name: 'narrator'}) DETACH DELETE rt")
+
+        response = await self._post_recording(
+            client,
+            edition_id,
+            {"contributions": [{"type": "person", "id": person_id, "role": "narrator"}]},
+        )
+
+        assert response.status_code == 201, response.text
+        recording = (await client.get(f"/v2/recordings/{response.json()['id']}")).json()
+        assert recording["contributions"][0]["role"] == "narrator"
+
     async def test_create_recording_on_missing_edition(self, client, test_database):
         person_id = await self._create_person(test_database)
 

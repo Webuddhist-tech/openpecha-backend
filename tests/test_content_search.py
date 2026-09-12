@@ -247,3 +247,61 @@ class TestContentSearch:
         assert delete_response.status_code == 204
 
         assert (await search_client.get("/v2/content-search", params={"query": "delete", "search_type": "exact"})).json() == []
+
+    async def test_delete_all_documents_clears_stale_index_data(
+        self,
+        search_client,
+        test_database,
+        content_search,
+    ):
+        person_id = await _create_person(test_database)
+        text_id = await _create_text(test_database, person_id)
+        await _create_critical_edition(search_client, text_id, "clearable phrase", [(0, 16)])
+
+        assert (await search_client.get("/v2/content-search", params={"query": "clearable"})).json()
+
+        await content_search.delete_all_documents()
+
+        assert (await search_client.get("/v2/content-search", params={"query": "clearable"})).json() == []
+
+    async def test_segmentation_changes_reindex_edition_content(self, search_client, test_database):
+        person_id = await _create_person(test_database)
+        text_id = await _create_text(test_database, person_id)
+        content = "segmentation lifecycle"
+        edition_response = await search_client.post(
+            f"/v2/texts/{text_id}/editions",
+            json={
+                "content": content,
+                "metadata": {
+                    "type": EditionType.DIPLOMATIC.value,
+                    "bdrc": "W1SEARCH",
+                    "source": "Search Source",
+                },
+                "pagination": {
+                    "volumes": [
+                        {
+                            "pages": [
+                                {
+                                    "reference": "1a",
+                                    "lines": [{"start": 0, "end": len(content)}],
+                                }
+                            ]
+                        }
+                    ]
+                },
+            },
+        )
+        assert edition_response.status_code == 201, edition_response.json()
+        edition_id = edition_response.json()["id"]
+        assert (await search_client.get("/v2/content-search", params={"query": "lifecycle"})).json() == []
+
+        segmentation_response = await search_client.post(
+            f"/v2/editions/{edition_id}/segmentation",
+            json={"segments": [{"lines": [{"start": 0, "end": len(content)}]}]},
+        )
+        assert segmentation_response.status_code == 201, segmentation_response.json()
+        assert (await search_client.get("/v2/content-search", params={"query": "lifecycle"})).json()
+
+        delete_response = await search_client.delete(f"/v2/editions/{edition_id}/segmentation")
+        assert delete_response.status_code == 204
+        assert (await search_client.get("/v2/content-search", params={"query": "lifecycle"})).json() == []

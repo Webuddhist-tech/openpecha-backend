@@ -107,6 +107,9 @@ class ContentSearchService:
     async def delete_edition(self, edition_id: str, *, refresh: bool = True) -> None:
         await self._client.delete_edition(edition_id, refresh=refresh)
 
+    async def delete_all_documents(self, *, refresh: bool = True) -> None:
+        await self._client.delete_all_documents(refresh=refresh)
+
     async def search(
         self,
         *,

@@ -98,11 +98,15 @@ async def get_segmentation_annotation(
 async def post_segmentation_annotation(
     edition_id: Annotated[str, Path(description="The ID of the edition")],
     data: SegmentationInput,
+    background_tasks: BackgroundTasks,
     _api_key: Annotated[str, Depends(get_api_key)],
     db: Annotated[Database, Depends(get_db)],
+    storage: Annotated[Storage, Depends(get_storage)],
+    content_search: Annotated[ContentSearchService, Depends(get_content_search)],
 ) -> IdResponse:
     """Add a segmentation annotation to an edition."""
     annotation_id = await db.annotation.segmentation.add(edition_id, data)
+    background_tasks.add_task(content_search.index_edition, edition_id, db, storage)
     return IdResponse(id=annotation_id)
 
 
@@ -134,10 +138,14 @@ async def get_segmentation_segments(
 )
 async def delete_segmentation_annotation(
     edition_id: Annotated[str, Path(description="The ID of the edition")],
+    background_tasks: BackgroundTasks,
     _api_key: Annotated[str, Depends(get_api_key)],
     db: Annotated[Database, Depends(get_db)],
+    storage: Annotated[Storage, Depends(get_storage)],
+    content_search: Annotated[ContentSearchService, Depends(get_content_search)],
 ) -> None:
     await db.annotation.segmentation.delete_by_edition(edition_id)
+    background_tasks.add_task(content_search.index_edition, edition_id, db, storage)
 
 
 @router.get(

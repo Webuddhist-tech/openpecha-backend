@@ -51,7 +51,7 @@ class ContributionDatabase:
         MATCH (source:{label} {{id: $source_id}})
         MATCH (p:Person) WHERE (($person_id IS NOT NULL AND p.id = $person_id)
                                 OR ($person_bdrc_id IS NOT NULL AND p.bdrc = $person_bdrc_id))
-        MATCH (rt:RoleType {{name: $role_name}})
+        MERGE (rt:RoleType {{name: $role_name}})
         CREATE (source)-[:HAS_CONTRIBUTION]->(c:Contribution)-[:BY]->(p),
                (c)-[:WITH_ROLE]->(rt)
         RETURN elementId(c) AS contribution_element_id
@@ -61,7 +61,7 @@ class ContributionDatabase:
     def create_ai_query(label: LiteralString) -> LiteralString:
         return f"""
         MATCH (source:{label} {{id: $source_id}})
-        MATCH (rt:RoleType {{name: $role_name}})
+        MERGE (rt:RoleType {{name: $role_name}})
         MERGE (ai:AI {{id: $ai_id}})
         CREATE (source)-[:HAS_CONTRIBUTION]->(c:Contribution)-[:BY]->(ai),
             (c)-[:WITH_ROLE]->(rt)

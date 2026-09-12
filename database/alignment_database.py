@@ -90,6 +90,7 @@ class AlignmentDatabase:
     LIMIT $limit
     RETURN {
       id: source_segment.id,
+      type: source_segment.type,
       reference: source_segment.reference,
       segmentation_id: source_segmentation.id,
       edition_id: source_edition.id,
@@ -99,6 +100,7 @@ class AlignmentDatabase:
     } AS source_segment,
     {
       id: target_segment.id,
+      type: target_segment.type,
       reference: target_segment.reference,
       segmentation_id: target_segmentation.id,
       edition_id: target_edition.id,

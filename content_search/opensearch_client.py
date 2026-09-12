@@ -88,9 +88,15 @@ class ContentSearchOpenSearchClient:
         await self._require_client().indices.refresh(index=self.index_name)
 
     async def delete_edition(self, edition_id: str, *, refresh: bool = True) -> None:
+        await self.delete_by_query({"term": {"edition_id": edition_id}}, refresh=refresh)
+
+    async def delete_all_documents(self, *, refresh: bool = True) -> None:
+        await self.delete_by_query({"match_all": {}}, refresh=refresh)
+
+    async def delete_by_query(self, query: dict, *, refresh: bool = True) -> None:
         await self._require_client().delete_by_query(
             index=self.index_name,
-            body={"query": {"term": {"edition_id": edition_id}}},
+            body={"query": query},
             params={"conflicts": "proceed", "ignore_unavailable": "true", "refresh": str(refresh).lower()},
         )
 

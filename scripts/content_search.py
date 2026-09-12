@@ -45,6 +45,9 @@ async def _reindex(edition_ids: list[str] | None) -> None:
     try:
         await search.connect()
         ids = edition_ids or await _get_all_edition_ids(db)
+        if not edition_ids:
+            logger.info("Clearing existing content search documents before full reindex")
+            await search.delete_all_documents(refresh=False)
         total = len(ids)
         logger.info("Starting content search reindex for %d edition(s)", total)
         failed: list[str] = []
