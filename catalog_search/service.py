@@ -130,6 +130,7 @@ class CatalogSearchService:
 def _index_body() -> dict:
     return {
         "settings": {
+            "number_of_shards": 1,
             "analysis": {
                 "analyzer": {
                     "catalog_folded": {

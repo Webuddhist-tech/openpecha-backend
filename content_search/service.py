@@ -159,6 +159,7 @@ async def _get_display_segments_for_edition(
 def _index_body() -> dict:
     return {
         "settings": {
+            "number_of_shards": 1,
             "analysis": {
                 "analyzer": {
                     "content_search_default": {

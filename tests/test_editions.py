@@ -1097,6 +1097,62 @@ class TestPatchContent(TestEditionsEndpoints):
         content_response = await client.get(f"/v2/editions/{edition_id}/content")
         assert content_response.json() == "Hello World"
 
+    async def test_patch_content_delete_reanchors_each_span_of_multiline_segment(
+        self, client, test_database, test_person_data
+    ):
+        """Deleting content must adjust each line span without collapsing its segment."""
+        person_id = await self._create_test_person(test_database, test_person_data)
+        text_id = await self._create_test_text(test_database, person_id)
+        edition_id = await self._create_test_edition(
+            client,
+            text_id,
+            "0123456789ABCDEFGHIJ",
+            edition_type=EditionType.COLLATED,
+        )
+        segmentation_response = await client.post(
+            f"/v2/editions/{edition_id}/segmentation",
+            json={
+                "segments": [
+                    {"lines": [{"start": 0, "end": 5}, {"start": 5, "end": 10}]},
+                    {"lines": [{"start": 10, "end": 20}]},
+                ]
+            },
+        )
+        assert segmentation_response.status_code == 201
+
+        patch_response = await client.patch(
+            f"/v2/editions/{edition_id}/content",
+            json={"type": "delete", "start": 2, "end": 4},
+        )
+        assert patch_response.status_code == 204
+
+        content_response = await client.get(f"/v2/editions/{edition_id}/content")
+        assert content_response.status_code == 200
+        assert content_response.json() == "01456789ABCDEFGHIJ"
+
+        segments_response = await client.get(f"/v2/editions/{edition_id}/segmentation/segments")
+        assert segments_response.status_code == 200
+        segments = segments_response.json()["items"]
+        assert [segment["lines"] for segment in segments] == [
+            [{"start": 0, "end": 3}, {"start": 3, "end": 8}],
+            [{"start": 8, "end": 18}],
+        ]
+
+        patch_response = await client.patch(
+            f"/v2/editions/{edition_id}/content",
+            json={"type": "delete", "start": 0, "end": 3},
+        )
+        assert patch_response.status_code == 204
+
+        segments_response = await client.get(f"/v2/editions/{edition_id}/segmentation/segments")
+        assert segments_response.status_code == 200
+        updated_segments = segments_response.json()["items"]
+        assert updated_segments[0]["id"] == segments[0]["id"]
+        assert [segment["lines"] for segment in updated_segments] == [
+            [{"start": 0, "end": 5}],
+            [{"start": 5, "end": 15}],
+        ]
+
     async def test_patch_content_replace_success(self, client, test_database, test_person_data):
         """Test successful replace operation."""
         person_id = await self._create_test_person(test_database, test_person_data)

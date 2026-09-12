@@ -109,17 +109,17 @@ class SpanDatabase:
             -[:HAS_SEGMENTATION]->()
             <-[:SEGMENT_OF]-(entity:Segment)
             <-[:SPAN_OF]-(span:Span)
-        RETURN entity.id AS entity_id, span.start AS span_start, span.end AS span_end
+        RETURN elementId(span) AS span_id, span.start AS span_start, span.end AS span_end
         UNION ALL
         MATCH (m:Edition {id: $edition_id})
             <-[:PAGINATION_OF]-(:Pagination)
             <-[:VOLUME_OF]-(:Volume)
             <-[:PAGE_OF]-(entity:Page)
             <-[:SPAN_OF]-(span:Span)
-        RETURN entity.id AS entity_id, span.start AS span_start, span.end AS span_end
+        RETURN elementId(span) AS span_id, span.start AS span_start, span.end AS span_end
     }
-    RETURN entity_id, span_start, span_end
-    ORDER BY span_start, entity_id, span_end
+    RETURN span_id, span_start, span_end
+    ORDER BY span_start, span_id, span_end
     """
 
     FIND_ANNOTATION_SPANS_QUERY: LiteralString = """
@@ -127,34 +127,38 @@ class SpanDatabase:
         MATCH (m:Edition {id: $edition_id})
             <-[:NOTE_OF|BIBLIOGRAPHY_OF|ATTRIBUTE_OF]-(entity)
             <-[:SPAN_OF]-(span:Span)
-        RETURN entity.id AS entity_id, span.start AS span_start, span.end AS span_end
+        RETURN elementId(span) AS span_id, span.start AS span_start, span.end AS span_end
         UNION ALL
         MATCH (m:Edition {id: $edition_id})
             <-[:TOC_OF]-(:TableOfContents)
             <-[:SECTION_OF]-(entity:TableOfContentsSection)
             <-[:SPAN_OF]-(span:Span)
-        RETURN entity.id AS entity_id, span.start AS span_start, span.end AS span_end
+        RETURN elementId(span) AS span_id, span.start AS span_start, span.end AS span_end
     }
-    RETURN entity_id, span_start, span_end
+    RETURN span_id, span_start, span_end
     ORDER BY span_start
     """
 
     BATCH_UPDATE_SPANS_QUERY: LiteralString = """
     UNWIND $updates AS u
-    MATCH (span:Span)-[:SPAN_OF]->(
-        entity:Segment|Page|BibliographicMetadata|Note|Attribute|TableOfContentsSection {id: u.entity_id}
-    )
+    MATCH (span:Span)
+    WHERE elementId(span) = u.span_id
     SET span.start = u.new_start, span.end = u.new_end
     FINISH
     """
 
-    BATCH_DELETE_ENTITIES_QUERY: LiteralString = """
-    UNWIND $entity_ids AS eid
-    MATCH (entity:Segment|Page|BibliographicMetadata|Note|Attribute|TableOfContentsSection {id: eid})
-    OPTIONAL MATCH (span:Span)-[:SPAN_OF]->(entity)
+    BATCH_DELETE_SPANS_QUERY: LiteralString = """
+    UNWIND $span_ids AS span_id
+    MATCH (span:Span)-[:SPAN_OF]->(
+        entity:Segment|Page|BibliographicMetadata|Note|Attribute|TableOfContentsSection
+    )
+    WHERE elementId(span) = span_id
+    DETACH DELETE span
+    WITH DISTINCT entity
+    WHERE NOT (:Span)-[:SPAN_OF]->(entity)
     OPTIONAL MATCH (entity)-[:HAS_TITLE|HAS_SUMMARY]->(nomen:Nomen)
     OPTIONAL MATCH (nomen)-[:HAS_LOCALIZATION]->(localized:LocalizedText)
-    DETACH DELETE span, localized, nomen, entity
+    DETACH DELETE localized, nomen, entity
     FINISH
     """
 
@@ -177,14 +181,12 @@ class SpanDatabase:
         tx: AsyncManagedTransaction,
         updates: list[dict[str, str | int]],
         deletes: list[str],
-        batch_update_query: LiteralString,
-        batch_delete_query: LiteralString,
     ) -> None:
-        """Execute batched span updates and entity deletes in two queries."""
+        """Execute batched span updates and deletions."""
         if updates:
-            await tx.run(batch_update_query, updates=updates)
+            await tx.run(SpanDatabase.BATCH_UPDATE_SPANS_QUERY, updates=updates)
         if deletes:
-            await tx.run(batch_delete_query, entity_ids=deletes)
+            await tx.run(SpanDatabase.BATCH_DELETE_SPANS_QUERY, span_ids=deletes)
 
     async def adjust_spans_for_insert(self, edition_id: str, position: int, length: int) -> None:
         """Adjust all spans for an INSERT operation."""
@@ -197,15 +199,15 @@ class SpanDatabase:
             for record in await result.data():
                 adjusted = _adjust_continuous_for_insert(record["span_start"], record["span_end"], position, length)
                 if adjusted != (record["span_start"], record["span_end"]):
-                    updates.append({"entity_id": record["entity_id"], "new_start": adjusted[0], "new_end": adjusted[1]})
+                    updates.append({"span_id": record["span_id"], "new_start": adjusted[0], "new_end": adjusted[1]})
 
             result = await tx.run(self.FIND_ANNOTATION_SPANS_QUERY, edition_id=edition_id)
             for record in await result.data():
                 adjusted = _adjust_annotation_for_insert(record["span_start"], record["span_end"], position, length)
                 if adjusted != (record["span_start"], record["span_end"]):
-                    updates.append({"entity_id": record["entity_id"], "new_start": adjusted[0], "new_end": adjusted[1]})
+                    updates.append({"span_id": record["span_id"], "new_start": adjusted[0], "new_end": adjusted[1]})
 
-            await self._flush_batch(tx, updates, [], self.BATCH_UPDATE_SPANS_QUERY, self.BATCH_DELETE_ENTITIES_QUERY)
+            await self._flush_batch(tx, updates, [])
             await self._shift_content_length(tx, edition_id, length)
 
         async with self._db.get_session() as session:
@@ -223,21 +225,19 @@ class SpanDatabase:
             for record in await result.data():
                 adjusted = _adjust_span_for_delete(record["span_start"], record["span_end"], start, end)
                 if adjusted is None:
-                    deletes.append(record["entity_id"])
+                    deletes.append(record["span_id"])
                 elif adjusted != (record["span_start"], record["span_end"]):
-                    updates.append({"entity_id": record["entity_id"], "new_start": adjusted[0], "new_end": adjusted[1]})
+                    updates.append({"span_id": record["span_id"], "new_start": adjusted[0], "new_end": adjusted[1]})
 
             result = await tx.run(self.FIND_ANNOTATION_SPANS_QUERY, edition_id=edition_id)
             for record in await result.data():
                 adjusted = _adjust_span_for_delete(record["span_start"], record["span_end"], start, end)
                 if adjusted is None:
-                    deletes.append(record["entity_id"])
+                    deletes.append(record["span_id"])
                 elif adjusted != (record["span_start"], record["span_end"]):
-                    updates.append({"entity_id": record["entity_id"], "new_start": adjusted[0], "new_end": adjusted[1]})
+                    updates.append({"span_id": record["span_id"], "new_start": adjusted[0], "new_end": adjusted[1]})
 
-            await self._flush_batch(
-                tx, updates, deletes, self.BATCH_UPDATE_SPANS_QUERY, self.BATCH_DELETE_ENTITIES_QUERY
-            )
+            await self._flush_batch(tx, updates, deletes)
             await self._shift_content_length(tx, edition_id, start - end)
 
         async with self._db.get_session() as session:
@@ -265,21 +265,19 @@ class SpanDatabase:
                     span_start, span_end, start, end, new_len, is_first_encompassed=is_first
                 )
                 if adjusted is None:
-                    deletes.append(record["entity_id"])
+                    deletes.append(record["span_id"])
                 elif adjusted != (span_start, span_end):
-                    updates.append({"entity_id": record["entity_id"], "new_start": adjusted[0], "new_end": adjusted[1]})
+                    updates.append({"span_id": record["span_id"], "new_start": adjusted[0], "new_end": adjusted[1]})
 
             result = await tx.run(self.FIND_ANNOTATION_SPANS_QUERY, edition_id=edition_id)
             for record in await result.data():
                 adjusted = _adjust_annotation_for_replace(record["span_start"], record["span_end"], start, end, new_len)
                 if adjusted is None:
-                    deletes.append(record["entity_id"])
+                    deletes.append(record["span_id"])
                 elif adjusted != (record["span_start"], record["span_end"]):
-                    updates.append({"entity_id": record["entity_id"], "new_start": adjusted[0], "new_end": adjusted[1]})
+                    updates.append({"span_id": record["span_id"], "new_start": adjusted[0], "new_end": adjusted[1]})
 
-            await self._flush_batch(
-                tx, updates, deletes, self.BATCH_UPDATE_SPANS_QUERY, self.BATCH_DELETE_ENTITIES_QUERY
-            )
+            await self._flush_batch(tx, updates, deletes)
             await self._shift_content_length(tx, edition_id, new_len - (end - start))
 
         async with self._db.get_session() as session:

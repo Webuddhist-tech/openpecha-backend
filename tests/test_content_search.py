@@ -1,8 +1,9 @@
 # ruff: noqa: ANN001, ANN201, E501, S101
 import pytest
 
+from catalog_search.service import _index_body as catalog_index_body
 from config import settings
-from content_search.service import _build_chunk_documents
+from content_search.service import _build_chunk_documents, _index_body as content_index_body
 from identifier import generate_id
 from main import create_app
 from models.annotation import SegmentWithContextOutput, Span
@@ -21,6 +22,11 @@ async def test_non_testing_startup_requires_opensearch_endpoint(monkeypatch) -> 
     with pytest.raises(RuntimeError, match="OPENSEARCH_ENDPOINT is required"):
         async with app.router.lifespan_context(app):
             pass
+
+
+def test_search_indexes_use_one_primary_shard() -> None:
+    assert content_index_body()["settings"]["number_of_shards"] == 1
+    assert catalog_index_body()["settings"]["number_of_shards"] == 1
 
 
 async def _create_person(db) -> str:
