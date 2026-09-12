@@ -1195,6 +1195,21 @@ class TestSpanAdjustmentFunctions:
         )
         assert result is None
 
+    async def test_continuous_replace_starting_at_span_start_keeps_replacement(self):
+        """A continuous entity starting at the replacement boundary must include the new text."""
+        from database.span_database import _adjust_continuous_for_replace
+
+        result = _adjust_continuous_for_replace(
+            start=0,
+            end=10,
+            replace_start=0,
+            replace_end=7,
+            new_len=2,
+            is_first_encompassed=False,
+        )
+
+        assert result == (0, 5)
+
     async def test_continuous_multiline_replace_maps_shared_boundaries_once(self):
         """Internal lines swallowed by a replacement collapse without overlap."""
         from database.span_database import _adjust_continuous_lines_for_replace

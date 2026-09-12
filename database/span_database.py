@@ -72,7 +72,8 @@ def _adjust_continuous_for_replace(
     if start < replace_start and replace_end < end:
         return (start, end + delta)
     if replace_start <= start < replace_end < end:
-        return (replace_start + new_len, end + delta)
+        new_start = replace_start if start == replace_start else replace_start + new_len
+        return (new_start, end + delta)
     if start < replace_start < end <= replace_end:
         return (start, replace_start + new_len)
     return (start, end)

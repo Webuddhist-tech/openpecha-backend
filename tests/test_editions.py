@@ -1162,6 +1162,7 @@ class TestPatchContent(TestEditionsEndpoints):
             pytest.param(5, 6, "Z", [[(0, 5), (5, 10)], [(10, 20)]], id="boundary-same-length"),
             pytest.param(5, 7, "Z", [[(0, 5), (5, 9)], [(9, 19)]], id="boundary-shrink"),
             pytest.param(0, 10, "XYZ", [[(0, 3)], [(3, 13)]], id="exact-entity"),
+            pytest.param(0, 7, "ZZ", [[(0, 2), (2, 5)], [(5, 15)]], id="starts-at-entity-boundary"),
         ],
     )
     async def test_patch_content_replace_preserves_multiline_contiguity(
