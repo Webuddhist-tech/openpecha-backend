@@ -433,7 +433,7 @@ TRIGGERS.append(
     {
         "name": "enforce_span_span_of",
         "description": (
-            "Every Span must have SPAN_OF to one of: Segment, BibliographicMetadata, Note, Attribute, Page, "
+            "Every Span must have SPAN_OF to one of: Segment, BibliographicMetadata, Note, Mark, Attribute, Page, "
             "TableOfContentsSection"
         ),
         "phase": "before",
@@ -452,7 +452,7 @@ TRIGGERS.append(
         WITH DISTINCT node
         WHERE NOT (node IN $deletedNodes)
           AND NOT (node)-[:SPAN_OF]->(
-            :Segment|BibliographicMetadata|Note|Attribute|Page|TableOfContentsSection
+            :Segment|BibliographicMetadata|Note|Mark|Attribute|Page|TableOfContentsSection
         )
         WITH collect(coalesce(toString(node.start), 'unknown')) AS ids
         WHERE size(ids) > 0
@@ -466,7 +466,7 @@ TRIGGERS.append(
         "audit": """
         MATCH (s:Span)
         WHERE NOT (s)-[:SPAN_OF]->(
-            :Segment|BibliographicMetadata|Note|Attribute|Page|TableOfContentsSection
+            :Segment|BibliographicMetadata|Note|Mark|Attribute|Page|TableOfContentsSection
         )
         RETURN toString(s.start) + '-' + toString(s.end) AS violating_id
     """,
@@ -551,6 +551,28 @@ TRIGGERS.extend(
         "Note",
         "HAS_TYPE",
         "NoteType",
+    )
+)
+
+# =========================================================================
+# Mark
+# =========================================================================
+TRIGGERS.extend(
+    _required_rel_trigger(
+        "enforce_mark_mark_of",
+        "Every Mark must have MARK_OF->Edition",
+        "Mark",
+        "MARK_OF",
+        "Edition",
+    )
+)
+TRIGGERS.extend(
+    _required_rel_trigger(
+        "enforce_mark_has_type",
+        "Every Mark must have HAS_TYPE->MarkType",
+        "Mark",
+        "HAS_TYPE",
+        "MarkType",
     )
 )
 

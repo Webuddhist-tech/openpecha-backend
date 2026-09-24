@@ -310,7 +310,7 @@ nodes:
         required: true
     relationships:
       SPAN_OF:
-        target: Segment | BibliographicMetadata | Note | Attribute | Page | TableOfContentsSection
+        target: Segment | BibliographicMetadata | Note | Mark | Attribute | Page | TableOfContentsSection
         cardinality: one
         required: true
 
@@ -350,6 +350,26 @@ nodes:
         required: true
       HAS_TYPE:
         target: NoteType
+        cardinality: one
+        required: true
+      HAS_METADATA:
+        target: AnnotationMetadata
+        cardinality: one
+        required: false
+
+  Mark:
+    properties:
+      id:
+        type: string
+        required: true
+        unique: true
+    relationships:
+      MARK_OF:
+        target: Edition
+        cardinality: one
+        required: true
+      HAS_TYPE:
+        target: MarkType
         cardinality: one
         required: true
       HAS_METADATA:
@@ -611,6 +631,16 @@ nodes:
         required: true
         allowed_values:
           - durchen
+
+  MarkType:
+    enum: true
+    properties:
+      name:
+        type: string
+        unique: true
+        required: true
+        allowed_values:
+          - yigchung
 
   AttributeType:
     enum: true

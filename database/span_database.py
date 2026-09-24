@@ -184,7 +184,7 @@ class SpanDatabase:
     FIND_ANNOTATION_SPANS_QUERY: LiteralString = """
     CALL {
         MATCH (m:Edition {id: $edition_id})
-            <-[:NOTE_OF|BIBLIOGRAPHY_OF|ATTRIBUTE_OF]-(entity)
+            <-[:NOTE_OF|MARK_OF|BIBLIOGRAPHY_OF|ATTRIBUTE_OF]-(entity)
             <-[:SPAN_OF]-(span:Span)
         RETURN elementId(span) AS span_id, span.start AS span_start, span.end AS span_end
         UNION ALL
@@ -209,7 +209,7 @@ class SpanDatabase:
     BATCH_DELETE_SPANS_QUERY: LiteralString = """
     UNWIND $span_ids AS span_id
     MATCH (span:Span)-[:SPAN_OF]->(
-        entity:Segment|Page|BibliographicMetadata|Note|Attribute|TableOfContentsSection
+        entity:Segment|Page|BibliographicMetadata|Note|Mark|Attribute|TableOfContentsSection
     )
     WHERE elementId(span) = span_id
     DETACH DELETE span

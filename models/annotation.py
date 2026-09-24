@@ -260,6 +260,16 @@ class NoteOutput(NoteBase):
     text_id: NonEmptyStr
 
 
+class MarkInput(SingleSpanAnnotation):
+    pass
+
+
+class MarkOutput(MarkInput):
+    id: NonEmptyStr
+    edition_id: NonEmptyStr
+    text_id: NonEmptyStr
+
+
 class AttributeBase(SingleSpanAnnotation):
     type: AttributeType
     value: Any

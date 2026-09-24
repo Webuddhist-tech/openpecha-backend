@@ -35,6 +35,9 @@ CREATE CONSTRAINT annotation_metadata_id_unique IF NOT EXISTS FOR (am:Annotation
 // Note nodes - each note must have a unique ID
 CREATE CONSTRAINT note_id_unique IF NOT EXISTS FOR (n:Note) REQUIRE n.id IS UNIQUE;
 
+// Mark nodes - each mark must have a unique ID
+CREATE CONSTRAINT mark_id_unique IF NOT EXISTS FOR (m:Mark) REQUIRE m.id IS UNIQUE;
+
 // BibliographicMetadata nodes - each metadata item must have a unique ID
 CREATE CONSTRAINT bibliographic_id_unique IF NOT EXISTS FOR (b:BibliographicMetadata) REQUIRE b.id IS UNIQUE;
 
@@ -59,6 +62,9 @@ CREATE CONSTRAINT edition_type_name_unique IF NOT EXISTS FOR (mt:EditionType) RE
 
 // LicenseType nodes - each license type must have a unique name
 CREATE CONSTRAINT license_type_name_unique IF NOT EXISTS FOR (lt:LicenseType) REQUIRE lt.name IS UNIQUE;
+
+// MarkType nodes - each mark type must have a unique name
+CREATE CONSTRAINT mark_type_name_unique IF NOT EXISTS FOR (mt:MarkType) REQUIRE mt.name IS UNIQUE;
 
 // =============================================================================
 // UNIQUE CONSTRAINTS FOR EXTERNAL IDENTIFIERS (BDRC/WIKI)

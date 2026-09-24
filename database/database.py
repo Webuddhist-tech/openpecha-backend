@@ -6,6 +6,7 @@ from neo4j import AsyncDriver, AsyncGraphDatabase, AsyncSession
 from .alignment_database import AlignmentDatabase
 from .annotation.attribute_database import AttributeDatabase
 from .annotation.bibliographic_database import BibliographicDatabase
+from .annotation.mark_database import MarkDatabase
 from .annotation.note_database import NoteDatabase
 from .annotation.pagination_database import PaginationDatabase
 from .annotation.segmentation_database import SegmentationDatabase
@@ -31,6 +32,7 @@ class AnnotationDatabase:
     TableOfContents = TableOfContentsDatabase
     Note = NoteDatabase
     Bibliographic = BibliographicDatabase
+    Mark = MarkDatabase
     Attribute = AttributeDatabase
 
     def __init__(self, db: Database) -> None:
@@ -40,6 +42,7 @@ class AnnotationDatabase:
         self.table_of_contents = TableOfContentsDatabase(db)
         self.note = NoteDatabase(db)
         self.bibliographic = BibliographicDatabase(db)
+        self.mark = MarkDatabase(db)
         self.attributes = AttributeDatabase(db)
 
 

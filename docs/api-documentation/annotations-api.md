@@ -13,6 +13,7 @@ Annotations attach structured information to edition content using character spa
 - **Table of contents**: A table-of-contents style hierarchy for an edition. Each section has a character span, localized title, optional localized summary, and optional nested subsections.
 - **Bibliographic metadata**: Span-level metadata such as colophon, title, incipit, or author.
 - **Durchen note**: A span-level critical apparatus note.
+- **Yigchung mark**: A span-only mark with no text or value payload.
 
 ## Authentication
 
@@ -33,6 +34,7 @@ Annotations are created and listed by type under an edition. Each `POST` returns
 | Table of contents | `GET /v2/editions/{edition_id}/table-of-contents` | `POST /v2/editions/{edition_id}/table-of-contents` |
 | Bibliographic metadata | `GET /v2/editions/{edition_id}/bibliographic` | `POST /v2/editions/{edition_id}/bibliographic` |
 | Durchen notes | `GET /v2/editions/{edition_id}/durchens` | `POST /v2/editions/{edition_id}/durchens` |
+| Yigchung marks | `GET /v2/editions/{edition_id}/yigchungs` | `POST /v2/editions/{edition_id}/yigchungs` |
 
 
 ### Create Segmentation
@@ -185,6 +187,16 @@ Supported types:
   "metadata": {}
 }
 ```
+
+### Create Yigchung Mark
+
+```json
+{
+  "span": {"start": 200, "end": 205}
+}
+```
+
+A yigchung carries only its character span. The endpoint assigns the internal mark type `yigchung`; clients do not submit a `type`, `text`, or `value`.
 
 ## Fetch and Delete by ID
 
@@ -399,6 +411,25 @@ Response:
 }
 ```
 
+### Yigchung Mark
+
+```http
+GET /v2/yigchungs/{yigchung_id}
+DELETE /v2/yigchungs/{yigchung_id}
+```
+
+Response:
+
+```json
+{
+  "id": "MRK123",
+  "edition_id": "ED123",
+  "text_id": "TXT123",
+  "span": {"start": 200, "end": 205},
+  "metadata": null
+}
+```
+
 ## Example Calls
 
 ```bash
@@ -415,6 +446,11 @@ curl -X POST "https://api-l25bgmwqoa-uc.a.run.app/v2/editions/ED123/durchens" \
 
 curl -X DELETE "https://api-l25bgmwqoa-uc.a.run.app/v2/durchens/DUR123" \
   -H "X-API-Key: your_api_key"
+
+curl -X POST "https://api-l25bgmwqoa-uc.a.run.app/v2/editions/ED123/yigchungs" \
+  -H "X-API-Key: your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{"span": {"start": 200, "end": 205}}'
 
 curl -X POST "https://api-l25bgmwqoa-uc.a.run.app/v2/editions/ED123/table-of-contents" \
   -H "X-API-Key: your_api_key" \
@@ -436,3 +472,4 @@ curl -X POST "https://api-l25bgmwqoa-uc.a.run.app/v2/editions/ED123/table-of-con
 - Direct-by-ID routes live in `routers/annotation/`.
 - Models live in `models/annotation.py`.
 - Content changes through `PATCH /v2/editions/{edition_id}/content` adjust affected spans automatically.
+- Neo4j deployment for Yigchung support must apply `database/neo4j_constraints.cypher`, reinstall triggers, and run `MERGE (:MarkType {name: 'yigchung'})`.

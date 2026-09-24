@@ -6,10 +6,12 @@ Tests endpoints:
 - GET /v2/editions/{edition_id}/segmentation
 - GET /v2/paginations/{pagination_id}
 - GET /v2/durchens/{note_id}
+- GET /v2/yigchungs/{mark_id}
 - GET /v2/bibliographic/{bibliographic_id}
 - DELETE /v2/editions/{edition_id}/segmentation
 - DELETE /v2/paginations/{pagination_id}
 - DELETE /v2/durchens/{note_id}
+- DELETE /v2/yigchungs/{mark_id}
 - DELETE /v2/bibliographic/{bibliographic_id}
 
 Requires environment variables:
@@ -24,6 +26,7 @@ from identifier import generate_id
 from models.annotation import (
     AnnotationMetadata,
     BibliographicMetadataInput,
+    MarkInput,
     NoteInput,
     Page,
     PaginationInput,
@@ -468,6 +471,58 @@ class TestDeleteDurchen(TestAnnotationsEndpoints):
         assert response.status_code == 204
 
 
+class TestYigchung(TestAnnotationsEndpoints):
+    """Tests for the yigchung mark annotation endpoints."""
+
+    async def _setup_mark_type(self, test_database) -> None:
+        async with test_database.get_session() as session:
+            await session.run("MERGE (:MarkType {name: 'yigchung'})")
+
+    async def test_yigchung_lifecycle(self, client, test_database, test_person_data):
+        await self._setup_mark_type(test_database)
+        person_id = await self._create_test_person(test_database, test_person_data)
+        text_id = await self._create_test_text(test_database, person_id)
+        edition_id = await self._create_test_edition(test_database, text_id, "0123456789")
+
+        create_response = await client.post(
+            f"/v2/editions/{edition_id}/yigchungs",
+            json={"span": {"start": 2, "end": 5}},
+        )
+        assert create_response.status_code == 201
+        mark_id = create_response.json()["id"]
+
+        list_response = await client.get(f"/v2/editions/{edition_id}/yigchungs")
+        assert list_response.status_code == 200
+        assert list_response.json() == [
+            {
+                "id": mark_id,
+                "edition_id": edition_id,
+                "text_id": text_id,
+                "span": {"start": 2, "end": 5},
+                "metadata": None,
+            }
+        ]
+
+        get_response = await client.get(f"/v2/yigchungs/{mark_id}")
+        assert get_response.status_code == 200
+        assert get_response.json() == list_response.json()[0]
+
+        delete_response = await client.delete(f"/v2/yigchungs/{mark_id}")
+        assert delete_response.status_code == 204
+        assert (await client.get(f"/v2/yigchungs/{mark_id}")).status_code == 404
+
+    async def test_get_yigchung_not_found(self, client, test_database):
+        response = await client.get("/v2/yigchungs/nonexistent_id")
+
+        assert response.status_code == 404
+        assert "error" in response.json()
+
+    async def test_delete_yigchung_not_found(self, client, test_database):
+        response = await client.delete("/v2/yigchungs/nonexistent_id")
+
+        assert response.status_code == 204
+
+
 class TestGetBibliographic(TestAnnotationsEndpoints):
     """Tests for GET /v2/bibliographic/{bibliographic_id}"""
 
@@ -599,6 +654,18 @@ class TestAddAnnotationSpanBounds(TestAnnotationsEndpoints):
 
         assert response.status_code == 422
 
+    async def test_post_yigchung_rejects_span_beyond_content(self, client, test_database, test_person_data):
+        person_id = await self._create_test_person(test_database, test_person_data)
+        text_id = await self._create_test_text(test_database, person_id)
+        edition_id = await self._create_test_edition(test_database, text_id, "0123456789")
+
+        response = await client.post(
+            f"/v2/editions/{edition_id}/yigchungs",
+            json={"span": {"start": 0, "end": 99}},
+        )
+
+        assert response.status_code == 422
+
     async def test_post_segmentation_accepts_span_at_content_end(self, client, test_database, test_person_data):
         """Test that a span ending exactly at the content length is accepted"""
         person_id = await self._create_test_person(test_database, test_person_data)
@@ -672,6 +739,16 @@ class TestAddAnnotationEditionNotFound(TestAnnotationsEndpoints):
 
         assert "Edition with ID 'nonexistent_edition_id' not found" in str(exc_info.value)
 
+    async def test_add_yigchung_edition_not_found(self, test_database):
+        from exceptions import DataNotFoundError
+
+        mark = MarkInput(span=Span(start=0, end=10))
+
+        with pytest.raises(DataNotFoundError) as exc_info:
+            await test_database.annotation.mark.add_yigchung("nonexistent_edition_id", mark)
+
+        assert "Edition with ID 'nonexistent_edition_id' not found" in str(exc_info.value)
+
 
 class TestDeleteEditionWithAnnotations(TestAnnotationsEndpoints):
     """Tests for edition deletion with all annotation types"""
@@ -704,6 +781,9 @@ class TestDeleteEditionWithAnnotations(TestAnnotationsEndpoints):
         note_item = NoteInput(span=Span(start=5, end=10), text="Test note")
         note_id = await test_database.annotation.note.add_durchen(source_edition_id, note_item)
 
+        mark_item = MarkInput(span=Span(start=10, end=15))
+        mark_id = await test_database.annotation.mark.add_yigchung(source_edition_id, mark_item)
+
         await test_database.annotation.segmentation.add(
             target_edition_id,
             SegmentationInput(segments=[SegmentInput(reference="target-1", lines=[Span(start=0, end=10)])]),
@@ -727,6 +807,7 @@ class TestDeleteEditionWithAnnotations(TestAnnotationsEndpoints):
         assert (await client.get(f"/v2/paginations/{pagination_id}")).status_code == 200
         assert (await client.get(f"/v2/bibliographic/{bibliographic_id}")).status_code == 200
         assert (await client.get(f"/v2/durchens/{note_id}")).status_code == 200
+        assert (await client.get(f"/v2/yigchungs/{mark_id}")).status_code == 200
         alignment_get_response = await client.get(
             f"/v2/editions/{source_edition_id}/alignments/{target_edition_id}"
         )
@@ -739,6 +820,7 @@ class TestDeleteEditionWithAnnotations(TestAnnotationsEndpoints):
         assert (await client.get(f"/v2/paginations/{pagination_id}")).status_code == 404
         assert (await client.get(f"/v2/bibliographic/{bibliographic_id}")).status_code == 404
         assert (await client.get(f"/v2/durchens/{note_id}")).status_code == 404
+        assert (await client.get(f"/v2/yigchungs/{mark_id}")).status_code == 404
         alignment_get_response = await client.get(
             f"/v2/editions/{source_edition_id}/alignments/{target_edition_id}"
         )

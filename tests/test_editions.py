@@ -2071,6 +2071,29 @@ class TestPatchContentWithAnnotations(TestEditionsEndpoints):
         # Note 3 (8,14): delete [5,9) overlaps start → shifts to (5, 10)
         assert span3 == (5, 10)
 
+    async def test_insert_before_yigchung_shifts_it(self, client, test_database, test_person_data):
+        """Yigchung marks use the same non-continuous span adjustment as notes."""
+        person_id = await self._create_test_person(test_database, test_person_data)
+        text_id = await self._create_test_text(test_database, person_id)
+        edition_id = await self._create_test_edition(client, text_id, "0123456789")
+
+        create_response = await client.post(
+            f"/v2/editions/{edition_id}/yigchungs",
+            json={"span": {"start": 5, "end": 8}},
+        )
+        assert create_response.status_code == 201
+        mark_id = create_response.json()["id"]
+
+        response = await client.patch(
+            f"/v2/editions/{edition_id}/content",
+            json={"type": "insert", "position": 2, "text": "XX"},
+        )
+        assert response.status_code == 204
+
+        get_response = await client.get(f"/v2/yigchungs/{mark_id}")
+        assert get_response.status_code == 200
+        assert get_response.json()["span"] == {"start": 7, "end": 10}
+
 
 @pytest.mark.asyncio(loop_scope="session")
 class TestPatchContentWithSegmentationAndAnnotations(TestEditionsEndpoints):

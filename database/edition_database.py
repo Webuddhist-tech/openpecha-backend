@@ -6,6 +6,7 @@ from models.edition import EditionOutput
 from models.enums import EditionType
 
 from .annotation.bibliographic_database import BibliographicDatabase
+from .annotation.mark_database import MarkDatabase
 from .annotation.note_database import NoteDatabase
 from .annotation.pagination_database import PaginationDatabase
 from .annotation.segmentation_database import SegmentationDatabase
@@ -187,6 +188,7 @@ class EditionDatabase:
         await TableOfContentsDatabase.delete_all_with_transaction(tx, edition_id)
         await BibliographicDatabase.delete_all_with_transaction(tx, edition_id)
         await NoteDatabase.delete_all_with_transaction(tx, edition_id)
+        await MarkDatabase.delete_all_with_transaction(tx, edition_id)
         await RecordingDatabase.delete_all_with_transaction(tx, edition_id)
         await tx.run(EditionDatabase.DELETE_QUERY, edition_id=edition_id)
 

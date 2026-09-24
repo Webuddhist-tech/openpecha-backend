@@ -20,6 +20,7 @@ from routers.annotation.bibliographic import router as bibliographic_router
 from routers.annotation.durchens import router as durchens_router
 from routers.annotation.paginations import router as paginations_router
 from routers.annotation.table_of_contents import router as table_of_contents_router
+from routers.annotation.yigchungs import router as yigchungs_router
 from routers.applications import router as applications_router
 from routers.categories import router as categories_router
 from routers.content_search import router as content_search_router
@@ -119,7 +120,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 def create_app(*, testing: bool = False) -> FastAPI:
     app = FastAPI(
         title="OpenPecha API v2",
-        version="2.11.3",
+        version="2.11.4",
         lifespan=lifespan,
         docs_url="/docs",
         redoc_url="/redoc",
@@ -196,6 +197,7 @@ def create_app(*, testing: bool = False) -> FastAPI:
     app.include_router(table_of_contents_router)
     app.include_router(bibliographic_router)
     app.include_router(durchens_router)
+    app.include_router(yigchungs_router)
     app.include_router(applications_router)
     app.include_router(content_search_router)
     app.include_router(segments_router)

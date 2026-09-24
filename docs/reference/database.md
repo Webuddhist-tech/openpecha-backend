@@ -66,6 +66,7 @@ Method-level detail for each module is left to the source; this doc describes ro
 | **db.annotation.pagination** | [pagination_database.py](../../functions/database/annotation/pagination_database.py) | Pagination (volume/page) annotations. |
 | **db.annotation.table_of_contents** | [table_of_contents_database.py](../../functions/database/annotation/table_of_contents_database.py) | Table of contents annotations with localized section titles, summaries, spans, and recursive subsection hierarchy. |
 | **db.annotation.note** | [note_database.py](../../functions/database/annotation/note_database.py) | Note annotations (e.g. durchen). |
+| **db.annotation.mark** | [mark_database.py](../../functions/database/annotation/mark_database.py) | Span-only mark annotations (currently yigchung). |
 | **db.annotation.bibliographic** | [bibliographic_database.py](../../functions/database/annotation/bibliographic_database.py) | Bibliographic metadata annotations. |
 | **db.annotation.attributes** | [attribute_database.py](../../functions/database/annotation/attribute_database.py) | Attribute annotations (e.g. OCR confidence). |
 

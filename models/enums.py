@@ -69,6 +69,10 @@ class NoteType(StrEnum):
     DURCHEN = "durchen"
 
 
+class MarkType(StrEnum):
+    YIGCHUNG = "yigchung"
+
+
 class BibliographyType(StrEnum):
     COLOPHON = "colophon"
     INCIPIT = "incipit"

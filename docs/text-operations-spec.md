@@ -68,13 +68,14 @@ PATCH /v2/editions/{edition_id}/content
 | Segment | **Continuous** | `Segment → Segmentation → Manifestation` |
 | Page | **Continuous** | `Page → Volume → Pagination → Manifestation` |
 | Note | Annotation | `Note → Manifestation` |
+| Mark | Annotation | `Mark → Manifestation` |
 | BibliographicMetadata | Annotation | `BibMeta → Manifestation` |
 | Attribute | Annotation | `Attribute → Manifestation` |
 | TableOfContentsSection | Annotation | `TableOfContentsSection → TableOfContents → Manifestation` |
 
 ### Behavior Summary
 
-| Operation | Continuous (Segment/Page) | Annotation (Note/BibMeta/Attribute/TableOfContentsSection) |
+| Operation | Continuous (Segment/Page) | Annotation (Note/Mark/BibMeta/Attribute/TableOfContentsSection) |
 |-----------|---------------------------|------------------------------------------------|
 | Insert at start boundary | **Shift**† | **Shift** |
 | Insert at end boundary | **Expand** | **Unchanged** |

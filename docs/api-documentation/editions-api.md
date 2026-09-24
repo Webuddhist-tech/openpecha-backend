@@ -124,7 +124,7 @@ Deletes the edition metadata and associated annotation data handled by the datab
 Delete behavior:
 
 - Deletes the `Edition` node and its incipit title `Nomen` and `LocalizedText` subgraphs.
-- Cascade-deletes segmentations, alignments, pagination, table of contents, bibliographic metadata, durchen notes, recordings, spans, segments, pages, volumes, and table of contents sections associated with the edition, including annotations added after edition creation.
+- Cascade-deletes segmentations, alignments, pagination, table of contents, bibliographic metadata, durchen notes, yigchung marks, recordings, spans, segments, pages, volumes, and table of contents sections associated with the edition, including annotations added after edition creation.
 - Deletes the edition's `HAS_SOURCE` relationship, but preserves the `Source` node.
 - Does not delete the parent `Text`, underlying `Work`, categories, tags, contributors, or lookup/type nodes.
 - Does not delete stored base text, recording audio files, or other non-database side effects.
