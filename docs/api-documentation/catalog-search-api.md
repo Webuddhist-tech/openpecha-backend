@@ -23,7 +23,7 @@ GET /v2/texts?title=<query>
 
 - The query must be at least 2 characters.
 - Results are resolved back to full person/text records and returned in the standard paginated shape.
-- Other filters combine with the search: for texts, `language`, `category_id`, `tag_id`, `author_id`, `bdrc`, and `wiki` are applied as filters alongside the title query; for persons, `bdrc` and `wiki` are applied alongside the name query.
+- Other filters combine with the search: for texts, `language`, `category_id`, `tag_id`, `tag_id_match`, `author_id`, `bdrc`, and `wiki` are applied as filters alongside the title query; for persons, `bdrc` and `wiki` are applied alongside the name query. `tag_id` accepts comma-separated IDs; `tag_id_match` defaults to `all` and can be set to `any`.
 - If catalog search is not configured, these two filters return `503 Service Unavailable`. All other list behavior is unaffected.
 
 ## Matching Behavior

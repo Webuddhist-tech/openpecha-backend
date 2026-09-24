@@ -74,7 +74,8 @@ GET /v2/texts
 | `language`    | string  | query    | No       | -       | Filter by language code                                                                                |
 | `title`       | string  | query    | No       | -       | Search by title via catalog search: lenient, script-aware matching (diacritic-insensitive, Sanskrit and Tibetan phonetic) across both primary and alternative titles; minimum 2 characters. See [Catalog Search API](./catalog-search-api.md). |
 | `category_id` | string  | query    | No       | -       | Filter by category ID                                                                                  |
-| `tag_id`      | string  | query    | No       | -       | Filter by application tag ID                                                                           |
+| `tag_id`      | string  | query    | No       | -       | Comma-separated application tag IDs |
+| `tag_id_match` | string | query    | No       | `all`   | Tag matching mode: `all` requires every listed tag; `any` requires at least one |
 | `author_id`   | string  | query    | No       | -       | Filter by contributing author person ID                                                                |
 | `bdrc`        | string  | query    | No       | -       | Filter by BDRC identifier                                                                              |
 | `wiki`        | string  | query    | No       | -       | Filter by Wikidata identifier                                                                          |
@@ -145,8 +146,18 @@ curl -X GET "https://api-l25bgmwqoa-uc.a.run.app/v2/texts?bdrc=W123456" \
 curl -X GET "https://api-l25bgmwqoa-uc.a.run.app/v2/texts?language=bo&category_id=CAT12345678&limit=10" \
   -H "X-API-Key: your_api_key"
 
-# Filter by tag
+# Filter by one tag
 curl -X GET "https://api-l25bgmwqoa-uc.a.run.app/v2/texts?tag_id=TAG123" \
+  -H "X-API-Key: your_api_key" \
+  -H "X-Application: webuddhist"
+
+# Filter by every listed tag (default matching mode)
+curl -X GET "https://api-l25bgmwqoa-uc.a.run.app/v2/texts?tag_id=TAG123,TAG456" \
+  -H "X-API-Key: your_api_key" \
+  -H "X-Application: webuddhist"
+
+# Filter by any listed tag
+curl -X GET "https://api-l25bgmwqoa-uc.a.run.app/v2/texts?tag_id=TAG123,TAG456&tag_id_match=any" \
   -H "X-API-Key: your_api_key" \
   -H "X-Application: webuddhist"
 ```

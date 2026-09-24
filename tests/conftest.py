@@ -403,7 +403,10 @@ class MockS3Storage:
             from exceptions import DataNotFoundError
 
             raise DataNotFoundError(f"File not found: {key}")
-        return self._storage[key]
+        value = self._storage[key]
+        if not isinstance(value, str):
+            raise TypeError(f"Expected text content for key: {key}")
+        return value
 
     async def delete_base_text(self, text_id: str, edition_id: str) -> None:
         key = f"base_texts/{text_id}/{edition_id}.txt"

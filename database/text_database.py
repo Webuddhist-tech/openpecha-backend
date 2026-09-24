@@ -83,8 +83,13 @@ class TextDatabase:
         WHEN $category_id IS NOT NULL THEN {{
             MATCH (e:Text)-[:TEXT_OF]->(:Work)-[:HAS_CATEGORY]->(:Category {{id: $category_id}}) RETURN e
         }}
-        WHEN $tag_id IS NOT NULL THEN {{
-            MATCH (e:Text)-[:TEXT_OF]->(:Work)-[:HAS_TAG]->(:Tag {{id: $tag_id}}) RETURN e
+        WHEN size($tag_ids) > 0 THEN {{
+            MATCH (e:Text)-[:TEXT_OF]->(w:Work)
+            WHERE CASE $tag_id_match
+                WHEN 'all' THEN ALL(required_tag_id IN $tag_ids WHERE (w)-[:HAS_TAG]->(:Tag {{id: required_tag_id}}))
+                ELSE ANY(required_tag_id IN $tag_ids WHERE (w)-[:HAS_TAG]->(:Tag {{id: required_tag_id}}))
+            END
+            RETURN e
         }}
         WHEN $language IS NOT NULL THEN {{
             MATCH (e:Text)-[:HAS_LANGUAGE]->(:Language {{code: $language}}) RETURN e
@@ -97,7 +102,19 @@ class TextDatabase:
       AND ($author_id IS NULL OR EXISTS {{
           (e)-[:HAS_CONTRIBUTION]->(:Contribution)-[:BY]->(:Person {{id: $author_id}})
       }})
-      AND ($tag_id IS NULL OR (e)-[:TEXT_OF]->(:Work)-[:HAS_TAG]->(:Tag {{id: $tag_id}}))
+      AND (
+        size($tag_ids) = 0
+        OR CASE $tag_id_match
+            WHEN 'all' THEN ALL(
+                required_tag_id IN $tag_ids
+                WHERE (e)-[:TEXT_OF]->(:Work)-[:HAS_TAG]->(:Tag {{id: required_tag_id}})
+            )
+            ELSE ANY(
+                required_tag_id IN $tag_ids
+                WHERE (e)-[:TEXT_OF]->(:Work)-[:HAS_TAG]->(:Tag {{id: required_tag_id}})
+            )
+        END
+      )
       AND ($wiki IS NULL OR e.wiki = $wiki)
     ORDER BY e.id SKIP $offset LIMIT $limit
     RETURN {_TEXT_RETURN}
@@ -290,7 +307,8 @@ class TextDatabase:
                 language=filters.language,
                 category_id=filters.category_id,
                 author_id=filters.author_id,
-                tag_id=filters.tag_id,
+                tag_ids=filters.tag_ids,
+                tag_id_match=filters.tag_id_match,
                 bdrc=filters.bdrc,
                 wiki=filters.wiki,
                 application=application,

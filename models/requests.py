@@ -1,6 +1,6 @@
-from typing import Self
+from typing import Literal, Self
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from .annotation import (
     PaginationInput,
@@ -28,10 +28,25 @@ class TextFilter(OpenPechaModel):
     language: str | None = None
     title: NonEmptyStr | None = Field(default=None, min_length=2, description="Filter by title, minimum 2 characters")
     category_id: str | None = None
-    tag_id: str | None = None
+    tag_id: str | None = Field(default=None, description="Comma-separated application tag IDs.")
+    tag_id_match: Literal["all", "any"] = Field(default="all", description="Match all or any listed tag IDs.")
     author_id: str | None = None
     bdrc: str | None = None
     wiki: str | None = None
+
+    @field_validator("tag_id")
+    @classmethod
+    def normalize_tag_ids(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        tag_ids = list(dict.fromkeys(tag_id.strip() for tag_id in value.split(",")))
+        if "" in tag_ids:
+            raise ValueError("tag_id must be a comma-separated list of non-empty tag IDs")
+        return ",".join(tag_ids)
+
+    @property
+    def tag_ids(self) -> list[str]:
+        return self.tag_id.split(",") if self.tag_id else []
 
 
 class TextsQueryParams(PaginationParams, TextFilter):

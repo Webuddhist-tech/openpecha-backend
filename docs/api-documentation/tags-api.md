@@ -150,10 +150,18 @@ Texts can also be created or replaced with tag IDs:
 }
 ```
 
-Filter texts by tag:
+Filter texts by tag. Pass comma-separated IDs in `tag_id`. The default `tag_id_match=all` requires every listed
+tag:
 
 ```bash
-curl "https://api-l25bgmwqoa-uc.a.run.app/v2/texts?tag_id=TAG123" \
+curl "https://api-l25bgmwqoa-uc.a.run.app/v2/texts?tag_id=TAG123,TAG456" \
+  -H "X-API-Key: your_api_key"
+```
+
+Use `tag_id_match=any` to return texts having at least one listed tag:
+
+```bash
+curl "https://api-l25bgmwqoa-uc.a.run.app/v2/texts?tag_id=TAG123,TAG456&tag_id_match=any" \
   -H "X-API-Key: your_api_key"
 ```
 

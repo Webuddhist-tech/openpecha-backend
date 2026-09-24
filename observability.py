@@ -130,7 +130,7 @@ def setup_telemetry(app: FastAPI) -> None:
     resource = Resource.create(
         {
             "service.name": service_name,
-            "service.version": "2.11.2",
+            "service.version": "2.11.3",
             "deployment.environment": environment,
         }
     )

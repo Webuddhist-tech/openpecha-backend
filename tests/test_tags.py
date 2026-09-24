@@ -463,7 +463,7 @@ class TestTagFiltering:
         text_id_tagged = await _create_text(client, tag_ids=[tag_id])
         text_id_untagged = await _create_text(client)
 
-        response = await client.get(f"/v2/texts/?tag_id={tag_id}")
+        response = await client.get("/v2/texts/", params={"tag_id": tag_id})
 
         assert response.status_code == 200
         data = response.json()
@@ -471,9 +471,31 @@ class TestTagFiltering:
         assert text_id_tagged in result_ids
         assert text_id_untagged not in result_ids
 
+    @pytest.mark.parametrize("match_mode", ["all", "any"])
+    async def test_filter_texts_by_tag_match_mode(self, client, test_database, match_mode):
+        await _seed_person(test_database)
+        tradition_id = await _create_tag(client, {"title": {"en": f"{match_mode} Tradition"}})
+        chant_id = await _create_tag(client, {"title": {"en": f"{match_mode} Chant"}})
+
+        both_id = await _create_text(client, tag_ids=[tradition_id, chant_id])
+        tradition_only_id = await _create_text(client, tag_ids=[tradition_id])
+        chant_only_id = await _create_text(client, tag_ids=[chant_id])
+        untagged_id = await _create_text(client)
+
+        params = {"tag_id": f"{tradition_id},{chant_id}"}
+        if match_mode != "all":
+            params["tag_id_match"] = match_mode
+        response = await client.get("/v2/texts/", params=params)
+
+        assert response.status_code == 200
+        result_ids = {expr["id"] for expr in _items(response.json())}
+        expected_ids = {both_id} if match_mode == "all" else {both_id, tradition_only_id, chant_only_id}
+        assert result_ids == expected_ids
+        assert untagged_id not in result_ids
+
     async def test_filter_texts_by_nonexistent_tag_returns_empty(self, client, test_database):
         """Test filtering by non-existent tag_id returns empty list"""
-        response = await client.get("/v2/texts/?tag_id=nonexistent_tag")
+        response = await client.get("/v2/texts/", params={"tag_id": "nonexistent_tag"})
 
         assert response.status_code == 200
         data = response.json()
@@ -481,6 +503,16 @@ class TestTagFiltering:
         assert data["offset"] == 0
         assert data["limit"] == 20
         assert data["items"] == []
+
+    async def test_filter_texts_rejects_empty_tag_id(self, client):
+        response = await client.get("/v2/texts/", params={"tag_id": "tag-a,,tag-b"})
+
+        assert response.status_code == 422
+
+    async def test_filter_texts_rejects_invalid_match_mode(self, client):
+        response = await client.get("/v2/texts/", params={"tag_id": "tag-a,tag-b", "tag_id_match": "some"})
+
+        assert response.status_code == 422
 
 
 @pytest.mark.asyncio(loop_scope="session")
