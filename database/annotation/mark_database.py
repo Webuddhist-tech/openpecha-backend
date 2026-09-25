@@ -37,7 +37,8 @@ class MarkDatabase:
     """
 
     CREATE_QUERY: LiteralString = """
-    MATCH (edition:Edition {id: $edition_id}), (mark_type:MarkType {name: $mark_type})
+    MATCH (edition:Edition {id: $edition_id})
+    MERGE (mark_type:MarkType {name: $mark_type})
     CREATE (span:Span {start: $span_start, end: $span_end})
         -[:SPAN_OF]->(mark:Mark {id: $mark_id})
         -[:MARK_OF]->(edition),
