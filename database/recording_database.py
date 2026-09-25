@@ -216,14 +216,12 @@ class RecordingDatabase:
             language_code=language_code,
         )
 
-        record = await result.single()
-        if not record:
-            raise DataNotFoundError(f"License type '{recording.license.value}' not found")
-
+        record = await result.single(strict=True)
+        created_recording_id = str(record["recording_id"])
         for contribution in recording.contributions:
-            await ContributionDatabase.create_with_transaction(tx, RECORDING_LABEL, recording_id, contribution)
+            await ContributionDatabase.create_with_transaction(tx, RECORDING_LABEL, created_recording_id, contribution)
 
-        return recording_id
+        return created_recording_id
 
     async def update(self, recording_id: str, patch: RecordingPatch) -> RecordingOutput:
         await self.get(recording_id)

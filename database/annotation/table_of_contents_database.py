@@ -250,17 +250,20 @@ class TableOfContentsDatabase:
             metadata_id=metadata_id,
             metadata_name=metadata_name,
         )
-        record = await result.single()
-        if record is None:
-            raise DataNotFoundError(f"Edition with ID '{edition_id}' not found")
+        record = await result.single(strict=True)
 
         sections_result = await tx.run(TableOfContentsDatabase.CREATE_SECTIONS_QUERY, toc_id=toc_id, sections=sections)
-        sections_record = await sections_result.single()
-        if not sections_record or sections_record["count"] != len(sections):
+        sections_record = await sections_result.single(strict=True)
+        if sections_record["count"] != len(sections):
             raise DataNotFoundError(f"Failed to create table of contents sections for table of contents '{toc_id}'")
 
-        await tx.run(TableOfContentsDatabase.CREATE_HIERARCHY_QUERY, sections=sections)
-        return toc_id
+        hierarchy_result = await tx.run(TableOfContentsDatabase.CREATE_HIERARCHY_QUERY, sections=sections)
+        hierarchy_record = await hierarchy_result.single(strict=True)
+        expected_hierarchy_count = sum(section["parent_id"] is not None for section in sections)
+        if hierarchy_record["count"] != expected_hierarchy_count:
+            raise DataNotFoundError(f"Failed to create table of contents hierarchy for table of contents '{toc_id}'")
+
+        return str(record["id"])
 
     @staticmethod
     async def delete_with_transaction(tx: AsyncManagedTransaction, toc_id: str) -> None:

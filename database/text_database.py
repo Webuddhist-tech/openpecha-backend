@@ -350,7 +350,7 @@ class TextDatabase:
     @staticmethod
     async def create_with_transaction(tx: AsyncManagedTransaction, text: TextInput, text_id: str | None = None) -> str:
         text_id = text_id or generate_id()
-        await TextDatabase._validate_translation_language(tx, text)
+        await TextDatabase._validate_related_text(tx, text)
 
         work_id = generate_id()
         await DatabaseValidator.validate_text_creation(tx, text, work_id)
@@ -374,35 +374,39 @@ class TextDatabase:
         }
 
         if text.commentary_of:
-            await tx.run(TextDatabase.CREATE_COMMENTARY_QUERY, work_id=work_id, **params)
+            result = await tx.run(TextDatabase.CREATE_COMMENTARY_QUERY, work_id=work_id, **params)
         elif text.translation_of:
-            await tx.run(TextDatabase.CREATE_TRANSLATION_QUERY, **params)
+            result = await tx.run(TextDatabase.CREATE_TRANSLATION_QUERY, **params)
         else:
-            await tx.run(TextDatabase.CREATE_STANDALONE_QUERY, work_id=work_id, original=True, **params)
+            result = await tx.run(TextDatabase.CREATE_STANDALONE_QUERY, work_id=work_id, original=True, **params)
+
+        record = await result.single(strict=True)
+        created_text_id = str(record["text_id"])
 
         if text.category_id:
             await tx.run(TextDatabase.LINK_WORK_TO_CATEGORY_QUERY, work_id=work_id, category_id=text.category_id)
 
         for contribution in text.contributions:
-            await ContributionDatabase.create_with_transaction(tx, TEXT_LABEL, text_id, contribution)
+            await ContributionDatabase.create_with_transaction(tx, TEXT_LABEL, created_text_id, contribution)
 
         if text.tag_ids:
             await DatabaseValidator.validate_tags_exist(tx, list(text.tag_ids))
             for tag_id in text.tag_ids:
                 await TagDatabase.tag_work_with_transaction(tx, work_id, tag_id)
 
-        return text_id
+        return created_text_id
 
     @staticmethod
-    async def _validate_translation_language(tx: AsyncManagedTransaction, text: TextInput) -> None:
-        if not text.translation_of:
+    async def _validate_related_text(tx: AsyncManagedTransaction, text: TextInput) -> None:
+        target_id = text.translation_of or text.commentary_of
+        if not target_id:
             return
-        result = await tx.run(TextDatabase.GET_QUERY, id=text.translation_of, bdrc_id=None, application=None)
+        result = await tx.run(TextDatabase.GET_QUERY, id=target_id, bdrc_id=None, application=None)
         record = await result.single()
         if not record:
-            raise DataNotFoundError(f"Target text '{text.translation_of}' not found for translation")
+            raise DataNotFoundError(f"Target text '{target_id}' not found")
         target_language = record.data()["text"]["language"]
-        if target_language == text.language:
+        if text.translation_of and target_language == text.language:
             raise DataValidationError("Translation must have a different language than the target text")
 
     async def update(self, text_id: str, patch: TextPatch, application: str | None = None) -> TextOutput:

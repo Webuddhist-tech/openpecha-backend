@@ -156,15 +156,15 @@ class PersonDatabase:
             alt_names_data = [alt_name.root for alt_name in person.alt_names] if person.alt_names else None
             primary_nomen_id = await NomenDatabase.create_with_transaction(tx, person.name.root, alt_names_data)
 
-            await tx.run(
+            result = await tx.run(
                 PersonDatabase.CREATE_QUERY,
                 id=person_id,
                 bdrc=person.bdrc,
                 wiki=person.wiki,
                 primary_nomen_id=primary_nomen_id,
             )
-
-            return person_id
+            record = await result.single(strict=True)
+            return str(record["person_id"])
 
         async with self.session as session:
             try:

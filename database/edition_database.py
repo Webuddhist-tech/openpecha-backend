@@ -161,21 +161,22 @@ class EditionDatabase:
         pagination: PaginationInput | None = None,
         segmentation: SegmentationInput | None = None,
     ) -> str:
-        async def transaction_function(tx: AsyncManagedTransaction) -> None:
+        async def transaction_function(tx: AsyncManagedTransaction) -> str:
             if text:
                 await TextDatabase.create_with_transaction(tx, text, text_id)
 
-            await self.create_with_transaction(tx, edition, text_id, edition_id, content_length)
+            created_edition_id = await self.create_with_transaction(tx, edition, text_id, edition_id, content_length)
 
             if segmentation is not None:
-                await SegmentationDatabase.add_with_transaction(tx, edition_id, segmentation)
+                await SegmentationDatabase.add_with_transaction(tx, created_edition_id, segmentation)
 
             if pagination is not None:
-                await PaginationDatabase.add_with_transaction(tx, edition_id, pagination)
+                await PaginationDatabase.add_with_transaction(tx, created_edition_id, pagination)
+
+            return created_edition_id
 
         async with self.session as session:
-            await session.execute_write(transaction_function)
-            return edition_id
+            return await session.execute_write(transaction_function)
 
     async def delete(self, edition_id: str) -> None:
         async with self.session as session:
@@ -226,11 +227,8 @@ class EditionDatabase:
             content_length=content_length,
         )
 
-        record = await result.single()
-        if not record:
-            raise DataNotFoundError(f"Text '{text_id}' not found")
-
-        return edition_id
+        record = await result.single(strict=True)
+        return str(record["edition_id"])
 
     @staticmethod
     async def _validate_create(

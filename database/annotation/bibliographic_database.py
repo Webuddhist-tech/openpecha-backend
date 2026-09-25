@@ -106,7 +106,7 @@ class BibliographicDatabase:
 
         generated_id = generate_id()
 
-        await tx.run(
+        result = await tx.run(
             BibliographicDatabase.CREATE_QUERY,
             edition_id=edition_id,
             id=generated_id,
@@ -114,8 +114,8 @@ class BibliographicDatabase:
             span_start=item.span.start,
             span_end=item.span.end,
         )
-
-        return generated_id
+        record = await result.single(strict=True)
+        return str(record["id"])
 
     @staticmethod
     async def delete_with_transaction(tx: AsyncManagedTransaction, bibliographic_id: str) -> None:

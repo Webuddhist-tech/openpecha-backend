@@ -44,8 +44,9 @@ class ApplicationDatabase:
 
     async def create(self, application_id: str, name: str) -> str:
         async def write(tx: AsyncManagedTransaction) -> str:
-            await tx.run(self.CREATE_QUERY, application_id=application_id, name=name)
-            return application_id
+            result = await tx.run(self.CREATE_QUERY, application_id=application_id, name=name)
+            record = await result.single(strict=True)
+            return str(record["id"])
 
         try:
             async with self.session as session:

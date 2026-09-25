@@ -56,8 +56,9 @@ class LanguageDatabase:
 
     async def create(self, code: str, name: str) -> str:
         async def write(tx: AsyncManagedTransaction) -> str:
-            await tx.run(LanguageDatabase.CREATE_QUERY, code=code, name=name)
-            return code
+            result = await tx.run(LanguageDatabase.CREATE_QUERY, code=code, name=name)
+            record = await result.single(strict=True)
+            return str(record["code"])
 
         try:
             async with self.session as session:

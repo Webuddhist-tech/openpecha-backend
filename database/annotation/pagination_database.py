@@ -47,13 +47,13 @@ class PaginationDatabase:
     WITH pagination
     UNWIND $volumes AS volume_data
     CREATE (volume:Volume {id: volume_data.id, index: volume_data.index})-[:VOLUME_OF]->(pagination)
-    WITH volume, volume_data
+    WITH pagination, volume, volume_data
     UNWIND volume_data.pages AS page_data
     CREATE (page:Page {id: page_data.id, reference: page_data.reference})-[:PAGE_OF]->(volume)
-    WITH page, page_data
+    WITH pagination, page, page_data
     UNWIND page_data.lines AS line
     CREATE (:Span {start: line.start, end: line.end})-[:SPAN_OF]->(page)
-    RETURN count(*) AS count
+    RETURN pagination.id AS id, count(*) AS count
     """
 
     DELETE_QUERY: LiteralString = """
@@ -130,13 +130,14 @@ class PaginationDatabase:
             ]
             volumes_data.append({"id": volume_id, "index": volume.index, "pages": pages_data})
 
-        await tx.run(
+        result = await tx.run(
             PaginationDatabase.CREATE_QUERY,
             edition_id=edition_id,
             pagination_id=pagination_id,
             volumes=volumes_data,
         )
-        return pagination_id
+        record = await result.single(strict=True)
+        return str(record["id"])
 
     @staticmethod
     async def delete_with_transaction(tx: AsyncManagedTransaction, pagination_id: str) -> None:

@@ -106,7 +106,7 @@ class MarkDatabase:
         await DatabaseValidator.validate_edition_spans(tx, edition_id, mark.max_end)
 
         generated_id = generate_id()
-        await tx.run(
+        result = await tx.run(
             MarkDatabase.CREATE_QUERY,
             edition_id=edition_id,
             mark_id=generated_id,
@@ -114,7 +114,8 @@ class MarkDatabase:
             span_start=mark.span.start,
             span_end=mark.span.end,
         )
-        return generated_id
+        record = await result.single(strict=True)
+        return str(record["mark_id"])
 
     @staticmethod
     async def delete_with_transaction(tx: AsyncManagedTransaction, mark_id: str) -> None:

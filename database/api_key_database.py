@@ -102,13 +102,7 @@ class ApiKeyDatabase:
                 created_at=created_at,
                 application_id=application_id,
             )
-            record = await result.single()
-
-            if record is None:
-                if application_id:
-                    raise ValueError(f"Application '{application_id}' not found")
-                raise ValueError("Failed to create API key")
-
+            record = await result.single(strict=True)
             return record["id"]
 
         async with self.session as session:

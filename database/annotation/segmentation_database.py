@@ -1,5 +1,7 @@
 from typing import TYPE_CHECKING, LiteralString
 
+from neo4j.exceptions import ResultNotSingleError
+
 from exceptions import DataConflictError, DataNotFoundError
 
 if TYPE_CHECKING:
@@ -66,10 +68,10 @@ class SegmentationDatabase:
     CREATE (segment:Segment {id: segment_data.id})-[:SEGMENT_OF]->(segmentation)
     SET segment.reference = segment_data.reference,
         segment.type = segment_data.type
-    WITH segment, segment_data
+    WITH segmentation, segment, segment_data
     UNWIND segment_data.lines AS line
     CREATE (:Span {start: line.start, end: line.end})-[:SPAN_OF]->(segment)
-    RETURN count(*) AS segment_count
+    RETURN segmentation.id AS id, count(*) AS segment_count
     """
 
     DELETE_BY_EDITION_ID_QUERY: LiteralString = """
@@ -137,10 +139,13 @@ class SegmentationDatabase:
             segmentation_id=segmentation_id,
             segments=segments_data,
         )
-        record = await result.single()
-        if not record or record["segment_count"] == 0:
+        try:
+            record = await result.single(strict=True)
+        except ResultNotSingleError as exc:
+            raise DataConflictError(f"Edition with ID '{edition_id}' already has a segmentation") from exc
+        if record["segment_count"] == 0:
             raise DataConflictError(f"Edition with ID '{edition_id}' already has a segmentation")
-        return segmentation_id
+        return str(record["id"])
 
     async def add(self, edition_id: str, segmentation: SegmentationInput) -> str:
         async with self._db.get_session() as session:

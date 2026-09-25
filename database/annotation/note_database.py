@@ -104,7 +104,7 @@ class NoteDatabase:
 
         generated_id = generate_id()
 
-        await tx.run(
+        result = await tx.run(
             NoteDatabase.CREATE_QUERY,
             edition_id=edition_id,
             note_id=generated_id,
@@ -113,8 +113,8 @@ class NoteDatabase:
             span_end=note.span.end,
             note_type=note_type,
         )
-
-        return generated_id
+        record = await result.single(strict=True)
+        return str(record["note_id"])
 
     @staticmethod
     async def delete_with_transaction(tx: AsyncManagedTransaction, note_id: str) -> None:

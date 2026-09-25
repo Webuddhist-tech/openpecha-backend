@@ -1,6 +1,5 @@
 from typing import TYPE_CHECKING, LiteralString
 
-from exceptions import DataValidationError
 from identifier import generate_id
 
 from .database_validator import DatabaseValidator
@@ -58,9 +57,8 @@ class NomenDatabase:
             primary_nomen_id=None,
             localized_texts=primary_localized_texts,
         )
-        record = await result.single()
-        if not record:
-            raise DataValidationError(f"Failed to create Nomen with texts: {list(primary_text.keys())}")
+        record = await result.single(strict=True)
+        created_primary_id = str(record["nomen_id"])
 
         for alt_text in alternative_texts or []:
             localized_texts = [
@@ -72,11 +70,12 @@ class NomenDatabase:
                 for bcp47_tag, text in alt_text.items()
             ]
 
-            await tx.run(
+            alternative_result = await tx.run(
                 NomenDatabase.CREATE_QUERY,
                 nomen_id=generate_id(),
-                primary_nomen_id=primary_nomen_id,
+                primary_nomen_id=created_primary_id,
                 localized_texts=localized_texts,
             )
+            await alternative_result.single(strict=True)
 
-        return primary_nomen_id
+        return created_primary_id
