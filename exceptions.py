@@ -31,7 +31,3 @@ class ServiceUnavailableError(OpenPechaError):
 
 class UnauthorizedError(OpenPechaError):
     status_code = 401
-
-
-class ForbiddenError(OpenPechaError):
-    status_code = 403

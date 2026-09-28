@@ -1,7 +1,7 @@
 import logging
 from typing import TYPE_CHECKING, Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Path, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Path, Query, status
 
 from catalog_search import CatalogSearchService
 from dependencies import get_api_key, get_catalog_search, get_db
@@ -9,7 +9,6 @@ from exceptions import ServiceUnavailableError
 from models.person import PersonInput, PersonOutput, PersonPatch
 from models.requests import PersonsQueryParams
 from models.responses import IdResponse, PaginatedResponse
-from search_updates import update_search
 
 if TYPE_CHECKING:
     from database import Database
@@ -42,19 +41,19 @@ async def get_all_persons(
     params: Annotated[PersonsQueryParams, Query()],
     _api_key: Annotated[str, Depends(get_api_key)],
     db: Annotated[Database, Depends(get_db)],
-    catalog_search: Annotated[CatalogSearchService | None, Depends(get_catalog_search)],
+    catalog_search: Annotated[CatalogSearchService, Depends(get_catalog_search)],
 ) -> PaginatedResponse[PersonOutput]:
     """List all persons with optional filtering."""
     if params.name:
-        if catalog_search is None:
+        if not catalog_search.available:
             raise ServiceUnavailableError("Catalog search is required for person name search")
-        persons = await catalog_search.search_persons(
-            db=db,
+        person_ids = await catalog_search.search_person_ids(
             query=params.name,
             filters=params,
             offset=params.offset,
             limit=params.limit + 1,
         )
+        persons = await db.person.get_by_ids(person_ids)
         return PaginatedResponse.from_items(persons, offset=params.offset, limit=params.limit)
 
     persons = await db.person.get_all(offset=params.offset, limit=params.limit + 1, filters=params)
@@ -68,16 +67,17 @@ async def get_all_persons(
     description="Create a new person.",
 )
 async def create_person(
-    request: Request,
-    background_tasks: BackgroundTasks,
     data: PersonInput,
+    background_tasks: BackgroundTasks,
     _api_key: Annotated[str, Depends(get_api_key)],
     db: Annotated[Database, Depends(get_db)],
+    catalog_search: Annotated[CatalogSearchService, Depends(get_catalog_search)],
 ) -> IdResponse:
     """Create a new person."""
     logger.info("Creating person: %s", data.model_dump_json())
     person_id = await db.person.create(data)
-    background_tasks.add_task(update_search, request, "person", person_id)
+    if catalog_search.available:
+        background_tasks.add_task(catalog_search.index_person, person_id, db)
     return IdResponse(id=person_id)
 
 
@@ -87,17 +87,18 @@ async def create_person(
     description="Partially update a person.",
 )
 async def update_person(
-    request: Request,
-    background_tasks: BackgroundTasks,
     person_id: Annotated[str, Path(description="The ID of the person")],
     data: PersonPatch,
+    background_tasks: BackgroundTasks,
     _api_key: Annotated[str, Depends(get_api_key)],
     db: Annotated[Database, Depends(get_db)],
+    catalog_search: Annotated[CatalogSearchService, Depends(get_catalog_search)],
 ) -> PersonOutput:
     """Update a person."""
     logger.info("Updating person %s with: %s", person_id, data.model_dump_json())
     person = await db.person.update(person_id, data)
-    background_tasks.add_task(update_search, request, "person", person_id)
+    if catalog_search.available:
+        background_tasks.add_task(catalog_search.index_person, person_id, db)
     return person
 
 
@@ -108,12 +109,13 @@ async def update_person(
     description="Delete a person if they are not referenced by contributions.",
 )
 async def delete_person(
-    request: Request,
-    background_tasks: BackgroundTasks,
     person_id: Annotated[str, Path(description="The ID of the person")],
+    background_tasks: BackgroundTasks,
     _api_key: Annotated[str, Depends(get_api_key)],
     db: Annotated[Database, Depends(get_db)],
+    catalog_search: Annotated[CatalogSearchService, Depends(get_catalog_search)],
 ) -> None:
     """Delete a person."""
     await db.person.delete(person_id)
-    background_tasks.add_task(update_search, request, "person", person_id)
+    if catalog_search.available:
+        background_tasks.add_task(catalog_search.delete_person, person_id)

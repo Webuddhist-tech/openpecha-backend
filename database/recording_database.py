@@ -6,7 +6,6 @@ from models.recording import RecordingInput, RecordingOutput, RecordingPatch
 
 from .contribution_database import ContributionDatabase, contributions_return
 from .database_validator import DatabaseValidator
-from .locking import lock_nodes
 from .nomen_database import NomenDatabase
 
 if TYPE_CHECKING:
@@ -51,8 +50,7 @@ class RecordingDatabase:
     MATCH (license:LicenseType {name: $license})
     OPTIONAL MATCH (title:Nomen {id: $title_nomen_id})
     CREATE (r:Recording {
-        id: $recording_id, format: $format, size_bytes: $size_bytes, duration_ms: $duration_ms,
-        date: $date
+        id: $recording_id, format: $format, size_bytes: $size_bytes, duration_ms: $duration_ms, date: $date
     })
     WITH r, m, license, title
     CREATE (r)-[:RECORDING_OF]->(m), (r)-[:HAS_LICENSE]->(license)
@@ -108,7 +106,7 @@ class RecordingDatabase:
 
     GET_STORAGE_KEY_QUERY: LiteralString = """
     MATCH (r:Recording {id: $recording_id})-[:RECORDING_OF]->(m:Edition)
-    RETURN 'recordings/' + m.id + '/' + r.id + '.' + r.format AS key
+    RETURN m.id AS edition_id, r.format AS format
     """
 
     _DELETE_MATCHED: LiteralString = """
@@ -136,16 +134,15 @@ class RecordingDatabase:
         return self._db.get_session()
 
     async def get(self, recording_id: str) -> RecordingOutput:
-        async with self.session as session:
-            return await session.execute_read(self.get_with_transaction, recording_id)
+        async def read(tx: AsyncManagedTransaction) -> RecordingOutput:
+            result = await tx.run(RecordingDatabase.GET_BY_ID_QUERY, recording_id=recording_id)
+            record = await result.single()
+            if record is None:
+                raise DataNotFoundError(f"Recording with ID '{recording_id}' not found")
+            return RecordingOutput.model_validate(record["recording"])
 
-    @staticmethod
-    async def get_with_transaction(tx: AsyncManagedTransaction, recording_id: str) -> RecordingOutput:
-        result = await tx.run(RecordingDatabase.GET_BY_ID_QUERY, recording_id=recording_id)
-        record = await result.single()
-        if record is None:
-            raise DataNotFoundError(f"Recording with ID '{recording_id}' not found")
-        return RecordingOutput.model_validate(record["recording"])
+        async with self.session as session:
+            return await session.execute_read(read)
 
     async def get_all(self, edition_id: str) -> list[RecordingOutput]:
         async def read(tx: AsyncManagedTransaction) -> list[RecordingOutput]:
@@ -156,15 +153,15 @@ class RecordingDatabase:
         async with self.session as session:
             return await session.execute_read(read)
 
-    async def get_storage_location(self, recording_id: str) -> str:
-        """Derive the immutable audio-object key from recording metadata."""
+    async def get_storage_location(self, recording_id: str) -> tuple[str, AudioFormat]:
+        """Return the edition ID and format needed to build the recording's storage key."""
 
-        async def read(tx: AsyncManagedTransaction) -> str:
+        async def read(tx: AsyncManagedTransaction) -> tuple[str, AudioFormat]:
             result = await tx.run(RecordingDatabase.GET_STORAGE_KEY_QUERY, recording_id=recording_id)
             record = await result.single()
             if record is None:
                 raise DataNotFoundError(f"Recording with ID '{recording_id}' not found")
-            return record["key"]
+            return record["edition_id"], AudioFormat(record["format"])
 
         async with self.session as session:
             return await session.execute_read(read)
@@ -179,7 +176,9 @@ class RecordingDatabase:
     ) -> str:
         async with self.session as session:
             return await session.execute_write(
-                RecordingDatabase.add_with_transaction, edition_id, recording, recording_id, audio_format, size_bytes
+                lambda tx: RecordingDatabase.add_with_transaction(
+                    tx, edition_id, recording, recording_id, audio_format, size_bytes
+                )
             )
 
     @staticmethod
@@ -191,7 +190,6 @@ class RecordingDatabase:
         audio_format: AudioFormat,
         size_bytes: int,
     ) -> str:
-        await lock_nodes(tx, "Edition", [edition_id])
         await DatabaseValidator.validate_edition_exists(tx, edition_id)
         await DatabaseValidator.validate_contribution_references(tx, recording.contributions)
 
@@ -226,11 +224,9 @@ class RecordingDatabase:
         return created_recording_id
 
     async def update(self, recording_id: str, patch: RecordingPatch) -> RecordingOutput:
-        async def write(tx: AsyncManagedTransaction) -> RecordingOutput:
-            await lock_nodes(tx, "Recording", [recording_id])
-            result = await tx.run("MATCH (r:Recording {id: $id}) RETURN r.id AS id", id=recording_id)
-            if await result.single() is None:
-                raise DataNotFoundError(f"Recording '{recording_id}' not found")
+        await self.get(recording_id)
+
+        async def write(tx: AsyncManagedTransaction) -> None:
             properties = patch.model_dump(include={"date", "duration_ms"}, exclude_unset=True)
             if properties:
                 await tx.run(
@@ -266,20 +262,20 @@ class RecordingDatabase:
                 await ContributionDatabase.delete_all_with_transaction(tx, RECORDING_LABEL, recording_id)
                 for contribution in patch.contributions:
                     await ContributionDatabase.create_with_transaction(tx, RECORDING_LABEL, recording_id, contribution)
-            return await self.get_with_transaction(tx, recording_id)
 
         async with self.session as session:
-            return await session.execute_write(write)
+            await session.execute_write(write)
+
+        return await self.get(recording_id)
 
     async def delete(self, recording_id: str) -> None:
         async with self.session as session:
-            await session.execute_write(RecordingDatabase.delete_with_transaction, recording_id)
+            await session.execute_write(lambda tx: RecordingDatabase.delete_with_transaction(tx, recording_id))
 
     @staticmethod
     async def delete_with_transaction(tx: AsyncManagedTransaction, recording_id: str) -> None:
-        await lock_nodes(tx, "Recording", [recording_id])
-        result = await tx.run(RecordingDatabase.GET_STORAGE_KEY_QUERY, recording_id=recording_id)
-        record = await result.single()
-        if record is None:
-            raise DataNotFoundError(f"Recording '{recording_id}' not found")
         await tx.run(RecordingDatabase.DELETE_QUERY, recording_id=recording_id)
+
+    @staticmethod
+    async def delete_all_with_transaction(tx: AsyncManagedTransaction, edition_id: str) -> None:
+        await tx.run(RecordingDatabase.DELETE_ALL_QUERY, edition_id=edition_id)

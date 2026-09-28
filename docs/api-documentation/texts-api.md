@@ -16,7 +16,7 @@ This document provides comprehensive documentation for all Texts-related endpoin
 
 ## Overview
 
-Texts (also known as Expressions in FRBR terminology) represent the intellectual content of a work independent of any specific physical edition. A text can have multiple editions, translations, and commentaries.
+Texts (also known as Expressions in FRBR terminology) represent the intellectual content of a work independent of any specific physical edition. A text can have multiple editions (editions), translations, and commentaries.
 
 ### Key Concepts
 
@@ -33,7 +33,7 @@ Texts (also known as Expressions in FRBR terminology) represent the intellectual
 Development: https://api-l25bgmwqoa-uc.a.run.app
 Production: https://api-aq25662yyq-uc.a.run.app
 Test: https://api-kwgjscy6gq-uc.a.run.app
-Local: http://127.0.0.1:8000
+Local: http://127.0.0.1:5001/pecha-backend-test-3a4d0/us-central1/api
 ```
 
 ---
@@ -89,7 +89,7 @@ GET /v2/texts
     {
       "id": "ABC12345678",
       "title": {
-        "en": "Sample Text",
+        "en": "Sample Expression",
         "bo": "དཔེ་མཚོན་ཚིག་སྒྲུབ།"
       },
       "language": "bo",
@@ -188,7 +188,7 @@ GET /v2/texts/{text_id}
 {
   "id": "T12345678",
   "title": {
-    "en": "Sample Text",
+    "en": "Sample Expression",
     "bo": "དཔེ་མཚོན་ཚིག་སྒྲུབ།"
   },
   "language": "bo",
@@ -293,7 +293,7 @@ POST /v2/texts
 | --------------- | ------ | ---------------------------------------------- |
 | `title`         | object | Localized title (language code → text mapping) |
 | `language`      | string | Primary language code (e.g., "bo", "en")       |
-| `category_id`   | string | Required for original texts/commentaries; forbidden for translations |
+| `category_id`   | string | Category ID this text belongs to               |
 
 
 **Optional Fields:**
@@ -315,8 +315,6 @@ POST /v2/texts
 
 - `title` must contain a localized title for the text language or its base language. For example, language `bo-x-ewts` can use a `bo` title.
 - A text cannot set both `translation_of` and `commentary_of`.
-- Translations inherit their Work category. Supplying `category_id`, including `null` or the inherited value, returns `422`.
-- Creation-time tags are added to the shared Work and must belong to the authorized application.
 - `contributions` may be omitted or empty when attribution is unknown. Each entry must include either `type` with `id` or `bdrc_id` depending on contribution type.
 - Extra fields are rejected.
 
@@ -371,6 +369,7 @@ To create a translation, include the `translation_of` field with the source text
     "en": "English Translation"
   },
   "language": "en",
+  "category_id": "CAT12345678",
   "translation_of": "ABC12345678",
   "contributions": [
     {
@@ -413,6 +412,7 @@ For AI-generated translations:
     "en": "AI English Translation"
   },
   "language": "en",
+  "category_id": "CAT12345678",
   "translation_of": "ABC12345678",
   "contributions": [
     {
@@ -471,6 +471,7 @@ curl -X POST "https://api-l25bgmwqoa-uc.a.run.app/v2/texts" \
       "en": "Heart Sutra - English Translation"
     },
     "language": "en",
+    "category_id": "CAT12345678",
     "translation_of": "T12345678",
     "contributions": [
       {
@@ -553,7 +554,6 @@ All fields are optional. Only include fields you want to update.
   "date": "1250",
   "language": "bo",
   "category_id": "CAT87654321",
-  "expected_category_id": "CAT12345678",
   "alt_titles": [
     {
       "en": "Alternative Title",
@@ -574,19 +574,18 @@ All fields are optional. Only include fields you want to update.
 | `title`         | object | Localized title (language code → text)        |
 | `alt_titles`    | array  | Alternative localized titles                  |
 | `language`      | string | Primary language code                         |
-| `category_id`   | string | New category for the shared Work and all its translations |
-| `expected_category_id` | string | Current category, required when changing it; stale or missing values return `409` |
+| `category_id`   | string | Category ID                                   |
 | `bdrc`          | string | BDRC identifier                               |
 | `wiki`          | string | Wikidata identifier                           |
 | `date`          | string | Date of composition                           |
 | `license`       | string | License type                                  |
 | `contributions` | array  | Replaces the text's current contributions     |
-| `tag_ids`       | array  | Replaces only the authorized application's Work tags; other applications' tags remain |
+| `tag_ids`       | array  | Replaces the text's current tag IDs           |
 
 
 **Note:** You cannot update `translation_of` or `commentary_of` via PATCH. These are set during creation. PATCH requires at least one field, rejects `null`, and rejects extra fields.
 
-`contributions` replaces the text's whole contribution list. `tag_ids` replaces the Work tags within the authorized application scope, preserving tags owned by other applications; `[]` clears that scope. Category changes require ownership of both the existing and replacement category. Reassigning the same category is a no-op and does not require `expected_category_id`.
+`contributions` and `tag_ids` replace the whole set rather than appending to it: send the full list you want the text to end up with, or `[]` to remove all of them.
 
 **Response: 200 OK**
 

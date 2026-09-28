@@ -1,14 +1,14 @@
 import logging
 from typing import Annotated
 
-from fastapi import Depends, Header, Request, Security
+from fastapi import Header, Request, Security
 from fastapi.security import APIKeyHeader
 
 from catalog_search import CatalogSearchService
 from config import settings
 from content_search import ContentSearchService
 from database import Database
-from exceptions import ForbiddenError, ServiceUnavailableError, UnauthorizedError
+from exceptions import UnauthorizedError
 from storage import Storage
 
 logger = logging.getLogger(__name__)
@@ -34,15 +34,12 @@ def get_storage(request: Request) -> Storage:
 
 def get_content_search(request: Request) -> ContentSearchService:
     """Dependency that provides the content search service from app.state."""
-    service = getattr(request.app.state, "content_search", None)
-    if service is None:
-        raise ServiceUnavailableError("Content search is unavailable")
-    return service
+    return request.app.state.content_search
 
 
-def get_catalog_search(request: Request) -> CatalogSearchService | None:
+def get_catalog_search(request: Request) -> CatalogSearchService:
     """Dependency that provides the catalog search service from app.state."""
-    return getattr(request.app.state, "catalog_search", None)
+    return request.app.state.catalog_search
 
 
 async def get_api_key(
@@ -81,9 +78,3 @@ async def get_api_key(
             raise UnauthorizedError("API key not authorized for this application")
 
     return x_api_key
-
-
-def get_admin_key(request: Request, api_key: Annotated[str, Depends(get_api_key)]) -> str:
-    if getattr(request.state, "api_key_info", {}).get("bound_application_id") is not None:
-        raise ForbiddenError("Application administration requires an unbound API key")
-    return api_key

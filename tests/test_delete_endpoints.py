@@ -39,7 +39,6 @@ async def _create_text(
     }
     if translation_of is not None:
         body["translation_of"] = translation_of
-        body.pop("category_id")
     if commentary_of is not None:
         body["commentary_of"] = commentary_of
 

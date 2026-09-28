@@ -17,6 +17,7 @@ Create a translation:
 {
   "title": {"en": "Heart Sutra Translation"},
   "language": "en",
+  "category_id": "CAT123",
   "translation_of": "TXT_SOURCE",
   "contributions": [
     {"type": "person", "id": "PERSON123", "role": "translator"}

@@ -4,7 +4,6 @@ from exceptions import DataConflictError, DataNotFoundError, DataValidationError
 from identifier import generate_id
 from models.category import CategoryOutput
 
-from .locking import lock_nodes
 from .nomen_database import NomenDatabase
 
 if TYPE_CHECKING:
@@ -20,11 +19,11 @@ class CategoryDatabase:
     {
         id: c.id,
         title: apoc.map.fromPairs([(c)-[:HAS_TITLE]->(n:Nomen)-[:HAS_LOCALIZATION]->(lt:LocalizedText)
-            -[r:HAS_LANGUAGE]->(l:Language) | [coalesce(r.bcp47, l.code), lt.text]]),
+            -[:HAS_LANGUAGE]->(l:Language) | [l.code, lt.text]]),
         description: CASE WHEN EXISTS {
             (c)-[:HAS_DESCRIPTION]->(:Nomen)-[:HAS_LOCALIZATION]->(:LocalizedText)
         } THEN apoc.map.fromPairs([(c)-[:HAS_DESCRIPTION]->(dn:Nomen)-[:HAS_LOCALIZATION]->(dlt:LocalizedText)
-            -[r:HAS_LANGUAGE]->(dl:Language) | [coalesce(r.bcp47, dl.code), dlt.text]]) ELSE null END,
+            -[:HAS_LANGUAGE]->(dl:Language) | [dl.code, dlt.text]]) ELSE null END,
         parent_id: [(c)-[:HAS_PARENT]->(parent:Category) | parent.id][0],
         children: [(child:Category)-[:HAS_PARENT]->(c) | child.id]
     } AS category
@@ -63,14 +62,13 @@ class CategoryDatabase:
     """
 
     FIND_EXISTING_QUERY: LiteralString = """
-        MATCH (app:Application {id: $application})
         UNWIND $titles AS title
         MATCH (c:Category)-[:BELONGS_TO]->(:Application {id: $application})
         WHERE ($parent_id IS NULL AND NOT EXISTS { (c)-[:HAS_PARENT]->(:Category) })
            OR (c)-[:HAS_PARENT]->(:Category {id: $parent_id})
         MATCH (c)-[:HAS_TITLE]->(:Nomen)-[:HAS_LOCALIZATION]->(lt:LocalizedText)
             -[r:HAS_LANGUAGE]->(lang:Language)
-        WHERE toLower(coalesce(r.bcp47, lang.code)) = toLower(title.language)
+        WHERE coalesce(r.bcp47, lang.code) = title.language
           AND toLower(lt.text) = toLower(title.text)
         RETURN title.language AS language, title.text AS title_text, c.id AS category_id
         LIMIT 1
@@ -172,7 +170,6 @@ class CategoryDatabase:
     async def _validate_not_exists_tx(
         self, tx: AsyncManagedTransaction, application: str, title: dict[str, str], parent_id: str | None
     ) -> None:
-        await lock_nodes(tx, "Application", [application])
         result = await tx.run(
             CategoryDatabase.FIND_EXISTING_QUERY,
             application=application,
