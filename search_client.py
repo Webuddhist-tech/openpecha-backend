@@ -2,7 +2,7 @@ import logging
 from collections.abc import AsyncGenerator, Iterable
 
 import botocore.session
-from opensearchpy import AIOHttpConnection, AsyncOpenSearch, AWSV4SignerAsyncAuth
+from opensearchpy import AsyncHttpConnection, AsyncOpenSearch, AWSV4SignerAsyncAuth
 from opensearchpy.exceptions import OpenSearchException, RequestError
 from opensearchpy.helpers import async_bulk
 
@@ -40,7 +40,7 @@ def create_search_client(
         hosts=[endpoint.rstrip("/")],
         use_ssl=endpoint.startswith("https://"),
         verify_certs=True,
-        connection_class=AIOHttpConnection,
+        connection_class=AsyncHttpConnection,
         http_auth=http_auth,
         timeout=request_timeout,
         max_retries=max_retries,

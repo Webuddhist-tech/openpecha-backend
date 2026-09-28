@@ -133,9 +133,9 @@ def _neo4j_container(_docker_runtime):
             container.stop()
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def _opensearch_endpoint(_docker_runtime) -> Generator[str]:
-    """Module-scoped OpenSearch container for content search tests."""
+    """One OpenSearch container shared by all search tests in the session."""
     plugin_dir = Path(__file__).resolve().parent.parent / "opensearch-plugins"
     plugins = {
         "analysis-tibetan": Path(os.environ.get(OPENSEARCH_TIBETAN_PLUGIN_ENV, plugin_dir / "analysis-tibetan.zip")),

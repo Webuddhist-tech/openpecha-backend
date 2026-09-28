@@ -227,39 +227,46 @@ async def test_index_setup_does_not_hide_creation_failure_without_a_usable_index
     client.indices.get_mapping.assert_not_awaited()
 
 
-@pytest.mark.parametrize("mode", ["basic", "aws"])
+@pytest.mark.parametrize("mode", ["basic", "aws", "none"])
 async def test_search_auth_configuration(monkeypatch, mode):
-    from unittest.mock import Mock
+    from aiohttp import web
+    from aiohttp.test_utils import TestServer
     from botocore.credentials import Credentials
 
     credentials = Credentials("test-key", "test-secret", "test-token")
     monkeypatch.setattr(
         search_client.botocore.session, "get_session", lambda: SimpleNamespace(get_credentials=lambda: credentials)
     )
-    factory = Mock()
-    monkeypatch.setattr(search_client, "AsyncOpenSearch", factory)
-    result = search_client.create_search_client(
-        endpoint="https://search.example/",
-        region="ap-southeast-1",
-        auth_mode=mode,
-        username="reader",
-        password="password",
-        request_timeout=17,
-        max_retries=2,
-    )
-    assert result is factory.return_value
-    kwargs = factory.call_args.kwargs
-    assert kwargs["hosts"] == ["https://search.example"]
-    assert kwargs["use_ssl"] is kwargs["verify_certs"] is True
-    assert kwargs["timeout"] == 17 and kwargs["max_retries"] == 2
-    if mode == "basic":
-        assert kwargs["http_auth"] == ("reader", "password")
-    else:
-        assert isinstance(kwargs["http_auth"], search_client.AWSV4SignerAsyncAuth)
-        headers = kwargs["http_auth"].signer.sign("GET", "https://search.example/_search", None)
-        assert "test-key/" in headers["Authorization"]
+    received = []
+
+    async def index_exists(request):
+        received.append(request.headers)
+        return web.Response()
+
+    app = web.Application()
+    app.router.add_head("/content-search", index_exists)
+    async with TestServer(app) as server:
+        async with search_client.create_search_client(
+            endpoint=str(server.make_url("/")),
+            region="ap-southeast-1",
+            auth_mode=mode,
+            username="reader",
+            password="password",
+            max_retries=0,
+        ) as client:
+            assert await client.indices.exists(index="content-search")
+
+    headers = received[0]
+    if mode == "aws":
+        assert headers["Authorization"].startswith("AWS4-HMAC-SHA256 Credential=test-key/")
         assert "/ap-southeast-1/es/aws4_request" in headers["Authorization"]
         assert headers["X-Amz-Security-Token"] == "test-token"
+    elif mode == "basic":
+        from aiohttp import BasicAuth
+
+        assert headers["Authorization"] == BasicAuth("reader", "password").encode()
+    else:
+        assert "Authorization" not in headers
 
 
 @pytest.mark.parametrize(
