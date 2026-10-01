@@ -25,7 +25,7 @@ X-API-Key: your_api_key
 
 ## Create and List Annotations on an Edition
 
-Annotations are created and listed by type under an edition. Each `POST` returns `{ "id": "..." }`.
+Annotations are created and listed by type under an edition. Each `POST` returns `{ "id": "..." }`, except Yigchung batch creation, which returns an array of ID objects.
 
 | Type | List | Create |
 |------|------|--------|
@@ -188,12 +188,26 @@ Supported types:
 }
 ```
 
-### Create Yigchung Mark
+### Create Yigchung Marks
 
 ```json
-{
-  "span": {"start": 200, "end": 205}
-}
+[
+  {
+    "span": {"start": 200, "end": 205}
+  },
+  {
+    "span": {"start": 350, "end": 360}
+  }
+]
+```
+
+The request must contain at least one item. All items are created atomically, and the response preserves request order:
+
+```json
+[
+  {"id": "MRK123"},
+  {"id": "MRK124"}
+]
 ```
 
 A yigchung carries only its character span. The endpoint assigns the internal mark type `yigchung`; clients do not submit a `type`, `text`, or `value`.
@@ -450,7 +464,10 @@ curl -X DELETE "https://api-l25bgmwqoa-uc.a.run.app/v2/durchens/DUR123" \
 curl -X POST "https://api-l25bgmwqoa-uc.a.run.app/v2/editions/ED123/yigchungs" \
   -H "X-API-Key: your_api_key" \
   -H "Content-Type: application/json" \
-  -d '{"span": {"start": 200, "end": 205}}'
+  -d '[
+    {"span": {"start": 200, "end": 205}},
+    {"span": {"start": 350, "end": 360}}
+  ]'
 
 curl -X POST "https://api-l25bgmwqoa-uc.a.run.app/v2/editions/ED123/table-of-contents" \
   -H "X-API-Key: your_api_key" \
@@ -472,4 +489,4 @@ curl -X POST "https://api-l25bgmwqoa-uc.a.run.app/v2/editions/ED123/table-of-con
 - Direct-by-ID routes live in `routers/annotation/`.
 - Models live in `models/annotation.py`.
 - Content changes through `PATCH /v2/editions/{edition_id}/content` adjust affected spans automatically.
-- Neo4j deployment for Yigchung support must apply `database/neo4j_constraints.cypher`, reinstall triggers, and run `MERGE (:MarkType {name: 'yigchung'})`.
+- Neo4j deployment for Yigchung support must apply `database/neo4j_constraints.cypher` and reinstall triggers. Creation automatically merges the `yigchung` mark type.

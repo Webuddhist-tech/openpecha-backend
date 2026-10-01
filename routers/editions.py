@@ -1,7 +1,7 @@
 import logging
 from typing import TYPE_CHECKING, Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Path, Query, UploadFile, status
+from fastapi import APIRouter, BackgroundTasks, Body, Depends, File, Form, Path, Query, UploadFile, status
 
 from content_search import ContentSearchService
 from dependencies import get_api_key, get_content_search, get_db, get_storage
@@ -297,17 +297,17 @@ async def get_yigchung_annotations(
 @router.post(
     "/{edition_id}/yigchungs",
     status_code=status.HTTP_201_CREATED,
-    summary="Add yigchung annotation",
-    description="Add a span-only yigchung mark annotation to an edition.",
+    summary="Add yigchung annotations",
+    description="Atomically add one or more span-only yigchung mark annotations to an edition.",
 )
-async def post_yigchung_annotation(
+async def post_yigchung_annotations(
     edition_id: Annotated[str, Path(description="The ID of the edition")],
-    data: MarkInput,
+    data: Annotated[list[MarkInput], Body(min_length=1)],
     _api_key: Annotated[str, Depends(get_api_key)],
     db: Annotated[Database, Depends(get_db)],
-) -> IdResponse:
-    annotation_id = await db.annotation.mark.add_yigchung(edition_id, data)
-    return IdResponse(id=annotation_id)
+) -> list[IdResponse]:
+    annotation_ids = await db.annotation.mark.add_yigchungs(edition_id, data)
+    return [IdResponse(id=annotation_id) for annotation_id in annotation_ids]
 
 
 @router.get(

@@ -474,42 +474,53 @@ class TestDeleteDurchen(TestAnnotationsEndpoints):
 class TestYigchung(TestAnnotationsEndpoints):
     """Tests for the yigchung mark annotation endpoints."""
 
-    async def _setup_mark_type(self, test_database) -> None:
-        async with test_database.get_session() as session:
-            await session.run("MERGE (:MarkType {name: 'yigchung'})")
-
     async def test_yigchung_lifecycle(self, client, test_database, test_person_data):
-        await self._setup_mark_type(test_database)
         person_id = await self._create_test_person(test_database, test_person_data)
         text_id = await self._create_test_text(test_database, person_id)
         edition_id = await self._create_test_edition(test_database, text_id, "0123456789")
 
         create_response = await client.post(
             f"/v2/editions/{edition_id}/yigchungs",
-            json={"span": {"start": 2, "end": 5}},
+            json=[
+                {"span": {"start": 2, "end": 5}},
+                {"span": {"start": 6, "end": 9}},
+            ],
         )
         assert create_response.status_code == 201
-        mark_id = create_response.json()["id"]
+        mark_ids = [item["id"] for item in create_response.json()]
+        assert len(mark_ids) == 2
 
         list_response = await client.get(f"/v2/editions/{edition_id}/yigchungs")
         assert list_response.status_code == 200
         assert list_response.json() == [
             {
-                "id": mark_id,
+                "id": mark_ids[0],
                 "edition_id": edition_id,
                 "text_id": text_id,
                 "span": {"start": 2, "end": 5},
                 "metadata": None,
-            }
+            },
+            {
+                "id": mark_ids[1],
+                "edition_id": edition_id,
+                "text_id": text_id,
+                "span": {"start": 6, "end": 9},
+                "metadata": None,
+            },
         ]
 
-        get_response = await client.get(f"/v2/yigchungs/{mark_id}")
+        get_response = await client.get(f"/v2/yigchungs/{mark_ids[0]}")
         assert get_response.status_code == 200
         assert get_response.json() == list_response.json()[0]
 
-        delete_response = await client.delete(f"/v2/yigchungs/{mark_id}")
+        delete_response = await client.delete(f"/v2/yigchungs/{mark_ids[0]}")
         assert delete_response.status_code == 204
-        assert (await client.get(f"/v2/yigchungs/{mark_id}")).status_code == 404
+        assert (await client.get(f"/v2/yigchungs/{mark_ids[0]}")).status_code == 404
+
+    async def test_create_yigchungs_rejects_empty_array(self, client):
+        response = await client.post("/v2/editions/edition-id/yigchungs", json=[])
+
+        assert response.status_code == 422
 
     async def test_get_yigchung_not_found(self, client, test_database):
         response = await client.get("/v2/yigchungs/nonexistent_id")
@@ -661,10 +672,16 @@ class TestAddAnnotationSpanBounds(TestAnnotationsEndpoints):
 
         response = await client.post(
             f"/v2/editions/{edition_id}/yigchungs",
-            json={"span": {"start": 0, "end": 99}},
+            json=[
+                {"span": {"start": 0, "end": 5}},
+                {"span": {"start": 0, "end": 99}},
+            ],
         )
 
         assert response.status_code == 422
+        list_response = await client.get(f"/v2/editions/{edition_id}/yigchungs")
+        assert list_response.status_code == 200
+        assert list_response.json() == []
 
     async def test_post_segmentation_accepts_span_at_content_end(self, client, test_database, test_person_data):
         """Test that a span ending exactly at the content length is accepted"""

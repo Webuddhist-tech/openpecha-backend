@@ -91,10 +91,14 @@ class MarkDatabase:
             return await session.execute_read(read)
 
     async def add_yigchung(self, edition_id: str, mark: MarkInput) -> str:
+        return (await self.add_yigchungs(edition_id, [mark]))[0]
+
+    async def add_yigchungs(self, edition_id: str, marks: list[MarkInput]) -> list[str]:
+        async def add_all(tx: AsyncManagedTransaction) -> list[str]:
+            return [await MarkDatabase.add_with_transaction(tx, edition_id, mark, MarkType.YIGCHUNG) for mark in marks]
+
         async with self._db.get_session() as session:
-            return await session.execute_write(
-                lambda tx: MarkDatabase.add_with_transaction(tx, edition_id, mark, MarkType.YIGCHUNG)
-            )
+            return await session.execute_write(add_all)
 
     @staticmethod
     async def add_with_transaction(

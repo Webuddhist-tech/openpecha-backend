@@ -2079,10 +2079,10 @@ class TestPatchContentWithAnnotations(TestEditionsEndpoints):
 
         create_response = await client.post(
             f"/v2/editions/{edition_id}/yigchungs",
-            json={"span": {"start": 5, "end": 8}},
+            json=[{"span": {"start": 5, "end": 8}}],
         )
         assert create_response.status_code == 201
-        mark_id = create_response.json()["id"]
+        mark_id = create_response.json()[0]["id"]
 
         response = await client.patch(
             f"/v2/editions/{edition_id}/content",
